@@ -95,7 +95,25 @@ class SANA(Backbone):
 
         @torch.inference_mode()
         def inner_model_fn(x, t, cond, **kwargs):
-            mask = torch.cat([kwargs['neg_mask'], kwargs['attn_mask']], dim=0)
+            neg_mask = kwargs['neg_mask']
+            attn_mask = kwargs['attn_mask']
+            
+            # Ensure both masks have the same sequence length
+            if neg_mask.size(1) != attn_mask.size(1):
+                # Use the larger size and pad the smaller one
+                max_seq_len = max(neg_mask.size(1), attn_mask.size(1))
+                
+                if neg_mask.size(1) < max_seq_len:
+                    # Pad neg_mask
+                    padding = torch.zeros(neg_mask.size(0), max_seq_len - neg_mask.size(1), dtype=neg_mask.dtype, device=neg_mask.device)
+                    neg_mask = torch.cat([neg_mask, padding], dim=1)
+                
+                if attn_mask.size(1) < max_seq_len:
+                    # Pad attn_mask
+                    padding = torch.zeros(attn_mask.size(0), max_seq_len - attn_mask.size(1), dtype=attn_mask.dtype, device=attn_mask.device)
+                    attn_mask = torch.cat([attn_mask, padding], dim=1)
+            
+            mask = torch.cat([neg_mask, attn_mask], dim=0)
             pred = self.pipe.transformer(x, encoder_hidden_states=cond, encoder_attention_mask=mask, timestep=t, return_dict=False)[0]
             return pred
         
