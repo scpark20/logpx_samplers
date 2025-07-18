@@ -1,0 +1,9 @@
+안녕하세요! 이것은 jyshin 브랜치에서 작업하는 테스트 파일입니다.
+
+작업 내용:
+- 새로운 브랜치 생성: jyshin ✓
+- 테스트 파일 생성: test_file.txt ✓
+- Git add, commit, push 연습 예정
+
+작업 날짜: 2024년
+브랜치: jyshin 
