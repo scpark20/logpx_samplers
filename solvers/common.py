@@ -388,10 +388,10 @@ def model_wrapper(
             return output
         elif model_type == "x_start":
             alpha_t, sigma_t = noise_schedule.marginal_alpha(t_continuous), noise_schedule.marginal_std(t_continuous)
-            return (x - expand_dims(alpha_t, x.dim()) * output) / expand_dims(sigma_t, x.dim())
+            return (x - expand_dims(alpha_t, x.dim()).to(x) * output) / expand_dims(sigma_t, x.dim()).to(x)
         elif model_type == "v":
             alpha_t, sigma_t = noise_schedule.marginal_alpha(t_continuous), noise_schedule.marginal_std(t_continuous)
-            return expand_dims(alpha_t, x.dim()) * output + expand_dims(sigma_t, x.dim()) * x
+            return expand_dims(alpha_t, x.dim()).to(x) * output + expand_dims(sigma_t, x.dim()).to(x) * x
         elif model_type == "score":
             sigma_t = noise_schedule.marginal_std(t_continuous)
             return -expand_dims(sigma_t, x.dim()) * output
