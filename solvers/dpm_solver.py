@@ -20,8 +20,9 @@ import os
 import torch
 from tqdm import tqdm
 from .common import interpolate_fn, expand_dims
+from .solver import Solver
 
-class DPM_Solver:
+class DPM_Solver(Solver):
     def __init__(
         self,
         model_fn,
@@ -88,8 +89,9 @@ class DPM_Solver:
             Burcu Karagol Ayan, S Sara Mahdavi, Rapha Gontijo Lopes, et al. Photorealistic text-to-image diffusion models
             with deep language understanding. arXiv preprint arXiv:2205.11487, 2022b.
         """
-        self.model = lambda x, t: model_fn(x, t.expand(x.shape[0]))
-        self.noise_schedule = noise_schedule
+        super().__init__(model_fn, noise_schedule)
+        # self.model = lambda x, t: model_fn(x, t.expand(x.shape[0]))
+        # self.noise_schedule = noise_schedule
         assert algorithm_type in ["dpmsolver", "dpmsolver++"]
         self.algorithm_type = algorithm_type
         if correcting_x0_fn == "dynamic_thresholding":
@@ -164,42 +166,6 @@ class DPM_Solver:
             return self.data_prediction_fn(x, t)
         else:
             return self.noise_prediction_fn(x, t)
-
-    def get_time_steps(self, skip_type, t_T, t_0, N, device, shift=1.0):
-        """Compute the intermediate time steps for sampling.
-
-        Args:
-            skip_type: A `str`. The type for the spacing of the time steps. We support three types:
-                - 'logSNR': uniform logSNR for the time steps.
-                - 'time_uniform': uniform time for the time steps. (**Recommended for high-resolutional data**.)
-                - 'time_quadratic': quadratic time for the time steps. (Used in DDIM for low-resolutional data.)
-            t_T: A `float`. The starting time of the sampling (default is T).
-            t_0: A `float`. The ending time of the sampling (default is epsilon).
-            N: A `int`. The total number of the spacing of the time steps.
-            device: A torch device.
-        Returns:
-            A pytorch tensor of the time steps, with the shape (N + 1,).
-        """
-        if skip_type == "logSNR":
-            lambda_T = self.noise_schedule.marginal_lambda(torch.tensor(t_T).to(device))
-            lambda_0 = self.noise_schedule.marginal_lambda(torch.tensor(t_0).to(device))
-            logSNR_steps = torch.linspace(lambda_T.cpu().item(), lambda_0.cpu().item(), N + 1).to(device)
-            return self.noise_schedule.inverse_lambda(logSNR_steps)
-        elif skip_type == "time_uniform":
-            return torch.linspace(t_T, t_0, N + 1).to(device)
-        elif skip_type == "time_quadratic":
-            t_order = 2
-            t = torch.linspace(t_T ** (1.0 / t_order), t_0 ** (1.0 / t_order), N + 1).pow(t_order).to(device)
-            return t
-        elif skip_type == "time_uniform_flow":
-            betas = torch.linspace(t_T, t_0, N + 1).to(device)
-            sigmas = 1.0 - betas
-            sigmas = (shift * sigmas / (1 + (shift - 1) * sigmas)).flip(dims=[0])
-            return sigmas
-        else:
-            raise ValueError(
-                f"Unsupported skip_type {skip_type}, need to be 'logSNR' or 'time_uniform' or 'time_quadratic'"
-            )
 
     def get_orders_and_timesteps_for_singlestep_solver(self, steps, order, skip_type, t_T, t_0, device):
         """

@@ -1,26 +1,27 @@
 import torch
 import numpy as np
-from diffusers import SanaPipeline
+# from diffusers import SanaPipeline
+from diffusers import AuraFlowPipeline
 from typing import Tuple, Union
 from .backbone import Backbone
 from solvers.common import NoiseScheduleFlow, model_wrapper
 
-class SANA(Backbone):
+class AuraFlow(Backbone):
     """
-    SANA diffusion sampler wrapping HuggingFace diffusers' SanaPipeline.
+    AuraFlow diffusion sampler wrapping HuggingFace diffusers' AuraFlowPipeline.
     """
     def __init__(
         self,
         device: Union[str, torch.device] = 'cuda',
         dtype: torch.dtype = torch.bfloat16,
-        model_id: str = 'Efficient-Large-Model/SANA1.5_1.6B_1024px_diffusers'
+        model_id: str = "fal/AuraFlow"
     ):
         super().__init__()
         self.device = torch.device(device)
         self.dtype = dtype
 
         # Load and move pipeline
-        self.pipe = SanaPipeline.from_pretrained(model_id, torch_dtype=dtype)
+        self.pipe = AuraFlowPipeline.from_pretrained(model_id, torch_dtype=dtype)
         self.pipe.to(self.device)
 
         # Cast submodules and set eval
@@ -67,6 +68,7 @@ class SANA(Backbone):
         Decode latent tensor to image.
         """
         lat = (latents / self.pipe.vae.config.scaling_factor).to(self.dtype)
+
         img_tensor = self.pipe.vae.decode(lat, return_dict=False)[0]
         return self.pipe.image_processor.postprocess(img_tensor, output_type=output_type)
 
@@ -94,10 +96,10 @@ class SANA(Backbone):
 
         @torch.inference_mode()
         def inner_model_fn(x, t, cond, **kwargs):
-            print('x.shape :', x.shape)
-            mask = torch.cat([kwargs['neg_mask'], kwargs['attn_mask']], dim=0)
-            pred = self.pipe.transformer(x, encoder_hidden_states=cond, encoder_attention_mask=mask, timestep=t, return_dict=False)[0]
-            print('pred.shape :', pred.shape)
+            # aura use timestep value between 0 and 1, with t=1 as noise and t=0 as the image
+            attention_mask = torch.cat([kwargs['neg_mask'], kwargs['attn_mask']], dim=0)
+            attention_kwargs = {'attention_mask': attention_mask}
+            pred = self.pipe.transformer(x, encoder_hidden_states=cond, timestep=t/1000, return_dict=False, attention_kwargs=attention_kwargs)[0]
             return pred
         
         model_fn = model_wrapper(

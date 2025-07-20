@@ -64,6 +64,10 @@ class Solver:
             t = torch.linspace(t_T ** (1.0 / t_order), t_0 ** (1.0 / t_order), N + 1).pow(t_order).to(device)
             return t
         elif skip_type == "time_uniform_flow":
+            if t_T == 1.0:
+                t_T = 1 - 1e-3
+            if t_0 == 0.0:
+                t_0 = 1e-3
             betas = torch.linspace(t_T, t_0, N + 1).to(device)
             sigmas = 1.0 - betas
             sigmas = (shift * sigmas / (1 + (shift - 1) * sigmas)).flip(dims=[0])
