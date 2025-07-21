@@ -2,6 +2,7 @@ import torch
 import numpy as np
 from huggingface_hub import snapshot_download
 from lib.pipelines.gmdit_pipeline import GMDiTPipeline
+from lib.ops.gmflow_ops.gmflow_ops import gm_to_mean
 
 from typing import Tuple, Union
 from .backbone import Backbone
@@ -75,17 +76,15 @@ class GMDiT(Backbone):
             np.random.seed(seed)
 
         latents = self.prepare_noise(len(class_ids))
-        noise_schedule = NoiseScheduleFlow(schedule="discrete")
+        noise_schedule = NoiseScheduleFlow(schedule="discrete_flow")
         class_labels = torch.tensor(class_ids, device=self.device).reshape(-1)
         class_null = torch.tensor([1000] * len(class_ids), device=self.device)
 
         @torch.inference_mode()
         def inner_model_fn(x, t, cond, **kwargs):
             x = x.to(kwargs['dtype'])
-            pred = self.pipe.transformer(x, timestep=t, class_labels=cond).means
-            #print(pred.keys())
-            pred = pred[:, :x.shape[1]]
-            return pred
+            pred = self.pipe.transformer(x, timestep=t, class_labels=cond)
+            return gm_to_mean(pred)
         
         model_fn = model_wrapper(
                 inner_model_fn,

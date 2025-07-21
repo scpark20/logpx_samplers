@@ -1,0 +1,7 @@
+Diffusion
+txt2img : "PixArt-Sigma", SD
+imagenet : "DiT"
+
+Flow-Matching
+txt2img : "SANA", AuraFlow
+imagenet : "GMDiT"
