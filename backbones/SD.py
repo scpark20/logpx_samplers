@@ -1,45 +1,57 @@
 import torch
 import numpy as np
-from diffusers import DiTPipeline
+from diffusers import StableDiffusionPipeline
 from typing import Tuple, Union
 from .backbone import Backbone
 from solvers.common import NoiseScheduleVP, model_wrapper
 
-class DiT(Backbone):
+class SD(Backbone):
     """
-    DiT diffusion sampler wrapping HuggingFace diffusers' DiTPipeline.
+    Stable-Diffusion sampler wrapping HuggingFace diffusers' StableDiffusionPipeline.
     """
     def __init__(
         self,
         device: Union[str, torch.device] = 'cuda',
         dtype: torch.dtype = torch.bfloat16,
-        model_id: str = "facebook/DiT-XL-2-256"
+        model_id: str = "sd-legacy/stable-diffusion-v1-5"
     ):
         super().__init__()
         self.device = torch.device(device)
         self.dtype = dtype
 
         # Load and move pipeline
-        self.pipe = DiTPipeline.from_pretrained(model_id, torch_dtype=dtype)
+        self.pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=dtype)
         self.pipe.to(self.device)
 
         # Cast submodules and set eval
-        for submod in (self.pipe.vae, self.pipe.transformer):
+        for submod in (self.pipe.vae, self.pipe.text_encoder, self.pipe.unet):
             submod.to(dtype)
             submod.eval()
 
     @torch.inference_mode()
     def prepare_noise(
-        self, batch_size: int,
+        self, batch_size: int, height: int, width: int
     ) -> torch.Tensor:
         """
         Generate initial Gaussian noise in latent space using numpy.
         """
-        C = self.pipe.transformer.config.in_channels
-        height = width = self.pipe.transformer.config.sample_size
-        shape = (batch_size, C, height, width)
+        C = self.pipe.unet.config.in_channels
+        scale = self.pipe.vae_scale_factor
+        shape = (batch_size, C, height // scale, width // scale)
         noise = np.random.randn(*shape)
         return torch.from_numpy(noise).to(self.device).to(torch.float32)
+
+    @torch.inference_mode()
+    def encode(
+        self, pos_text: str, neg_text: str
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Tokenize and encode positive and negative prompts for classifier-free guidance.
+        """
+        embeds, neg_embeds = self.pipe.encode_prompt(prompt=pos_text,
+                                    device=self.device, num_images_per_prompt=1,
+                                    do_classifier_free_guidance=True, negative_prompt=neg_text)
+        return embeds, neg_embeds
 
     @torch.inference_mode()
     def decode_vae(
@@ -50,18 +62,21 @@ class DiT(Backbone):
         """
         Decode latent tensor to image.
         """
+        
         lat = (latents / self.pipe.vae.config.scaling_factor).to(self.dtype)
-        samples = self.pipe.vae.decode(lat).sample
-        samples = (samples / 2 + 0.5).clamp(0, 1)
-        samples = samples.cpu().permute(0, 2, 3, 1).float().numpy()
-        samples = self.pipe.numpy_to_pil(samples)
-        return samples
+        img_tensor = self.pipe.vae.decode(lat, return_dict=False)[0]
+        #img_tensor = (img_tensor / 2 + 0.5).clamp(0, 1)
+        #img = img_tensor.cpu().permute(0, 2, 3, 1).float().numpy()
+        return self.pipe.image_processor.postprocess(img_tensor, output_type=output_type)
 
     @torch.inference_mode()
     def get_model_fn(
         self,
-        class_ids = [0],
-        guidance_scale: float = 4.0,
+        pos_text: str,
+        neg_text: str = '',
+        guidance_scale: float = 4.5,
+        height: int = 512,
+        width: int = 512,
         seed: Union[int, None] = None
     ) -> 'PIL.Image.Image':
         """
@@ -71,26 +86,26 @@ class DiT(Backbone):
         if seed is not None:
             np.random.seed(seed)
 
-        latents = self.prepare_noise(len(class_ids))
+        embeds, neg_embeds = self.encode(pos_text, neg_text)
+        latents = self.prepare_noise(1, height, width)
         noise_schedule = NoiseScheduleVP(schedule="discrete", betas=self.pipe.scheduler.betas, dtype=self.dtype)
-        class_labels = torch.tensor(class_ids, device=self.device).reshape(-1)
-        class_null = torch.tensor([1000] * len(class_ids), device=self.device)
 
         @torch.inference_mode()
         def inner_model_fn(x, t, cond, **kwargs):
+            #x = kwargs['pipe'].scheduler.scale_model_input(x, t)
             x = x.to(kwargs['dtype'])
-            pred = self.pipe.transformer(x, timestep=t, class_labels=cond).sample
-            pred = pred[:, :x.shape[1]]
+            pred = self.pipe.unet(x, t, encoder_hidden_states=cond, return_dict=False)[0]
             return pred
         
         model_fn = model_wrapper(
                 inner_model_fn,
                 noise_schedule,
                 model_type="noise",
+                model_kwargs={"pipe": self.pipe, "dtype": self.dtype},
                 guidance_type="classifier-free",
-                model_kwargs={"dtype": self.dtype},
-                condition=class_labels,
-                unconditional_condition=class_null,
+                condition=embeds,
+                unconditional_condition=neg_embeds,
                 guidance_scale=guidance_scale,
         )
+
         return model_fn, noise_schedule, latents

@@ -4,6 +4,7 @@ import math
 from tqdm import tqdm
 from .common import expand_dims
 from .solver import Solver
+import os
 
 class UniPC_Solver(Solver):
     def __init__(
@@ -21,7 +22,7 @@ class UniPC_Solver(Solver):
 
         We support both data_prediction and noise_prediction.
         """
-        super().__init__(model_fn, noise_schedule)
+        super().__init__(model_fn, noise_schedule, algorithm_type)
         # self.model = lambda x, t: model_fn(x, t.expand((x.shape[0])))
         # self.noise_schedule = noise_schedule
         assert algorithm_type in ["data_prediction", "noise_prediction"]
@@ -38,43 +39,6 @@ class UniPC_Solver(Solver):
         self.variant = variant
         self.predict_x0 = algorithm_type == "data_prediction"
         self.target_dtype = None  # 추가: 입력 데이터의 dtype을 저장할 속성
-
-    def dynamic_thresholding_fn(self, x0, t=None):
-        """
-        The dynamic thresholding method. 
-        """
-        dims = x0.dim()
-        p = self.dynamic_thresholding_ratio
-        s = torch.quantile(torch.abs(x0).reshape((x0.shape[0], -1)), p, dim=1)
-        s = expand_dims(torch.maximum(s, self.thresholding_max_val * torch.ones_like(s).to(s.device)), dims)
-        x0 = torch.clamp(x0, -s, s) / s
-        return x0
-
-    def noise_prediction_fn(self, x, t):
-        """
-        Return the noise prediction model.
-        """
-        return self.model(x, t)
-
-    def data_prediction_fn(self, x, t):
-        """
-        Return the data prediction model (with corrector).
-        """
-        noise = self.noise_prediction_fn(x, t)
-        alpha_t, sigma_t = self.noise_schedule.marginal_alpha(t).to(self.target_dtype), self.noise_schedule.marginal_std(t).to(self.target_dtype)
-        x0 = (x - sigma_t * noise) / alpha_t
-        if self.correcting_x0_fn is not None:
-            x0 = self.correcting_x0_fn(x0)
-        return x0
-
-    def model_fn(self, x, t):
-        """
-        Convert the model to the noise prediction model or the data prediction model. 
-        """
-        if self.predict_x0:
-            return self.data_prediction_fn(x, t)
-        else:
-            return self.noise_prediction_fn(x, t)
 
     def get_orders_and_timesteps_for_singlestep_solver(self, steps, order, skip_type, t_T, t_0, device):
         """
@@ -106,12 +70,6 @@ class UniPC_Solver(Solver):
         else:
             timesteps_outer = self.get_time_steps(skip_type, t_T, t_0, steps, device)[torch.cumsum(torch.tensor([0,] + orders), 0).to(device)]
         return timesteps_outer, orders
-
-    def denoise_to_zero_fn(self, x, s):
-        """
-        Denoise at the final step, which is equivalent to solve the ODE from lambda_s to infty by first-order discretization. 
-        """
-        return self.data_prediction_fn(x, s)
 
     def multistep_uni_pc_update(self, x, model_prev_list, t_prev_list, t, order, **kwargs):
         if len(t.shape) == 0:
@@ -385,7 +343,7 @@ class UniPC_Solver(Solver):
                     intermediates.append(x)
                 
                 # Init the first `order` values by lower order multistep UniPC.
-                for step in tqdm(range(1, order)):
+                for step in tqdm(range(1, order), disable=os.getenv("TQDM", "False")):
                     t = timesteps[step]
                     x, model_x = self.multistep_uni_pc_update(x, model_prev_list, t_prev_list, t, step, use_corrector=True)
                     if model_x is None:
@@ -398,7 +356,7 @@ class UniPC_Solver(Solver):
                     model_prev_list.append(model_x)
                     
                 # Compute the remaining values by `order`-th order multistep DPM-Solver.
-                for step in tqdm(range(order, steps + 1)):
+                for step in tqdm(range(order, steps + 1), disable=os.getenv("TQDM", "False")):
                     t = timesteps[step]
                     if lower_order_final:
                         step_order = min(order, steps + 1 - step)

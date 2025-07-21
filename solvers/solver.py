@@ -26,17 +26,66 @@ class Solver:
         self,
         model_fn,
         noise_schedule,
+        algorithm_type
     ):
         
         self.model = lambda x, t: model_fn(x, t.expand(x.shape[0]))
         self.noise_schedule = noise_schedule
+        assert algorithm_type in ["noise_prediction", "data_prediction", "vector_prediction"]
+        self.algorithm_type = algorithm_type
+        self.correcting_x0_fn = None
 
-    def model_fn(self, x, t):
+    def dynamic_thresholding_fn(self, x0, t):
+        """
+        The dynamic thresholding method.
+        """
+        dims = x0.dim()
+        p = self.dynamic_thresholding_ratio
+        s = torch.quantile(torch.abs(x0).reshape((x0.shape[0], -1)), p, dim=1)
+        s = expand_dims(torch.maximum(s, self.thresholding_max_val * torch.ones_like(s).to(s.device)), dims)
+        x0 = torch.clamp(x0, -s, s) / s
+        return x0    
+
+    def noise_prediction_fn(self, x, t):
+        """
+        Return the noise prediction model.
+        """
+        return self.model(x, t)
+
+    def data_prediction_fn(self, x, t):
+        """
+        Return the data prediction model (with corrector).
+        """
+        noise = self.noise_prediction_fn(x, t)
+        alpha_t, sigma_t = self.noise_schedule.marginal_alpha(t), self.noise_schedule.marginal_std(t)
+        x0 = (x - sigma_t * noise) / alpha_t
+        if self.correcting_x0_fn is not None:
+            x0 = self.correcting_x0_fn(x0, t)
+        return x0
+    
+    def vector_prediction_fn(self, x, t):
         noise = self.model(x, t)
         alpha_t, sigma_t = self.noise_schedule.marginal_alpha(t), self.noise_schedule.marginal_std(t)
         vector = (x - noise) / -(1 - sigma_t)
         return vector
+    
+    def model_fn(self, x, t):
+        """
+        Convert the model to the vector prediction model, the noise prediction model or the data prediction model.
+        """
+        if self.algorithm_type == "data_prediction":
+            return self.data_prediction_fn(x, t)
+        elif self.algorithm_type == "noise_prediction":
+            return self.noise_prediction_fn(x, t)
+        else:
+            return self.vector_prediction_fn(x, t)
 
+    def denoise_to_zero_fn(self, x, s):
+        """
+        Denoise at the final step, which is equivalent to solve the ODE from lambda_s to infty by first-order discretization.
+        """
+        return self.data_prediction_fn(x, s)
+        
     def get_time_steps(self, skip_type, t_T, t_0, N, device, shift=1.0):
         """Compute the intermediate time steps for sampling.
 

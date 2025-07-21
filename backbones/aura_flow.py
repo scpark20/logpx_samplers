@@ -96,6 +96,7 @@ class AuraFlow(Backbone):
 
         @torch.inference_mode()
         def inner_model_fn(x, t, cond, **kwargs):
+            x = x.to(kwargs['dtype'])
             # aura use timestep value between 0 and 1, with t=1 as noise and t=0 as the image
             attention_mask = torch.cat([kwargs['neg_mask'], kwargs['attn_mask']], dim=0)
             attention_kwargs = {'attention_mask': attention_mask}
@@ -106,7 +107,7 @@ class AuraFlow(Backbone):
                 inner_model_fn,
                 noise_schedule,
                 model_type="flow",
-                model_kwargs={"attn_mask": attn_mask, "neg_mask": neg_mask},
+                model_kwargs={"attn_mask": attn_mask, "neg_mask": neg_mask, "dtype": self.dtype},
                 guidance_type="classifier-free",
                 condition=embeds,
                 unconditional_condition=neg_embeds,

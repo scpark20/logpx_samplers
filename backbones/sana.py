@@ -39,7 +39,7 @@ class SANA(Backbone):
         scale = self.pipe.vae_scale_factor
         shape = (batch_size, C, height // scale, width // scale)
         noise = np.random.randn(*shape)
-        return torch.from_numpy(noise).to(self.device).to(self.dtype)
+        return torch.from_numpy(noise).to(self.device).to(torch.float32)
 
     @torch.inference_mode()
     def encode(
@@ -94,17 +94,16 @@ class SANA(Backbone):
 
         @torch.inference_mode()
         def inner_model_fn(x, t, cond, **kwargs):
-            print('x.shape :', x.shape)
+            x = x.to(kwargs['dtype'])
             mask = torch.cat([kwargs['neg_mask'], kwargs['attn_mask']], dim=0)
             pred = self.pipe.transformer(x, encoder_hidden_states=cond, encoder_attention_mask=mask, timestep=t, return_dict=False)[0]
-            print('pred.shape :', pred.shape)
             return pred
         
         model_fn = model_wrapper(
                 inner_model_fn,
                 noise_schedule,
                 model_type="flow",
-                model_kwargs={"attn_mask": attn_mask, "neg_mask": neg_mask},
+                model_kwargs={"attn_mask": attn_mask, "neg_mask": neg_mask, "dtype": self.dtype},
                 guidance_type="classifier-free",
                 condition=embeds,
                 unconditional_condition=neg_embeds,

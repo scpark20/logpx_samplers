@@ -1,11 +1,13 @@
 import torch
 import numpy as np
-from diffusers import DiTPipeline
+from huggingface_hub import snapshot_download
+from lib.pipelines.gmdit_pipeline import GMDiTPipeline
+
 from typing import Tuple, Union
 from .backbone import Backbone
-from solvers.common import NoiseScheduleVP, model_wrapper
+from solvers.common import NoiseScheduleFlow, model_wrapper
 
-class DiT(Backbone):
+class GMDiT(Backbone):
     """
     DiT diffusion sampler wrapping HuggingFace diffusers' DiTPipeline.
     """
@@ -13,14 +15,15 @@ class DiT(Backbone):
         self,
         device: Union[str, torch.device] = 'cuda',
         dtype: torch.dtype = torch.bfloat16,
-        model_id: str = "facebook/DiT-XL-2-256"
+        repo_id: str = 'Lakonik/gmflow_imagenet_k8_ema'
     ):
         super().__init__()
         self.device = torch.device(device)
         self.dtype = dtype
 
         # Load and move pipeline
-        self.pipe = DiTPipeline.from_pretrained(model_id, torch_dtype=dtype)
+        ckpt = snapshot_download(repo_id=repo_id)
+        self.pipe = GMDiTPipeline.from_pretrained(ckpt, variant='bf16', torch_dtype=dtype)
         self.pipe.to(self.device)
 
         # Cast submodules and set eval
@@ -72,21 +75,22 @@ class DiT(Backbone):
             np.random.seed(seed)
 
         latents = self.prepare_noise(len(class_ids))
-        noise_schedule = NoiseScheduleVP(schedule="discrete", betas=self.pipe.scheduler.betas, dtype=self.dtype)
+        noise_schedule = NoiseScheduleFlow(schedule="discrete")
         class_labels = torch.tensor(class_ids, device=self.device).reshape(-1)
         class_null = torch.tensor([1000] * len(class_ids), device=self.device)
 
         @torch.inference_mode()
         def inner_model_fn(x, t, cond, **kwargs):
             x = x.to(kwargs['dtype'])
-            pred = self.pipe.transformer(x, timestep=t, class_labels=cond).sample
+            pred = self.pipe.transformer(x, timestep=t, class_labels=cond).means
+            #print(pred.keys())
             pred = pred[:, :x.shape[1]]
             return pred
         
         model_fn = model_wrapper(
                 inner_model_fn,
                 noise_schedule,
-                model_type="noise",
+                model_type="flow",
                 guidance_type="classifier-free",
                 model_kwargs={"dtype": self.dtype},
                 condition=class_labels,
