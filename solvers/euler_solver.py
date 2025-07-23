@@ -12,7 +12,7 @@ class Euler_Solver(Solver):
     ):
         super().__init__(model_fn, noise_schedule, algorithm_type)
         
-    def sample(self, x, steps, skip_type='time_uniform_flow', flow_shift=1.0):
+    def sample(self, x, steps, skip_type='time_uniform_flow', flow_shift=1.0, **kwargs):
         t_0 = 1.0 / self.noise_schedule.total_N
         t_T = self.noise_schedule.T
         device = x.device

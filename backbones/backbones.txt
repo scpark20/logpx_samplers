@@ -5,3 +5,5 @@ imagenet : "DiT"
 Flow-Matching
 txt2img : "SANA", AuraFlow
 imagenet : "GMDiT"
+
+dataset : MS-COCO 2017

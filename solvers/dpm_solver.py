@@ -756,6 +756,7 @@ class DPM_Solver(Solver):
         rtol=0.05,
         return_intermediate=False,
         flow_shift=1.0,
+        **kwargs
     ):
         """
         Compute the sample at time `t_end` by DPM-Solver, given the initial `x` at time `t_start`.

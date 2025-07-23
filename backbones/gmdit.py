@@ -1,26 +1,27 @@
 import torch
 import numpy as np
-from diffusers import DiTPipeline
-from typing import Tuple, Union
+from huggingface_hub import snapshot_download
+from lib.pipelines.gmdit_pipeline import GMDiTPipeline
+from lib.ops.gmflow_ops.gmflow_ops import gm_to_mean
+from typing import Optional, List, Tuple, Union
 from .backbone import Backbone
-from solvers.common import NoiseScheduleVP, model_wrapper
+from solvers.common import NoiseScheduleFlow, model_wrapper
+from PIL import Image
 
-class DiT(Backbone):
-    """
-    DiT diffusion sampler wrapping HuggingFace diffusers' DiTPipeline.
-    """
+class GMDiT(Backbone):
     def __init__(
         self,
         device: Union[str, torch.device] = 'cuda',
         dtype: torch.dtype = torch.bfloat16,
-        model_id: str = "facebook/DiT-XL-2-256"
+        repo_id: str = 'Lakonik/gmflow_imagenet_k8_ema'
     ):
         super().__init__()
         self.device = torch.device(device)
         self.dtype = dtype
 
         # Load and move pipeline
-        self.pipe = DiTPipeline.from_pretrained(model_id, torch_dtype=dtype)
+        ckpt = snapshot_download(repo_id=repo_id)
+        self.pipe = GMDiTPipeline.from_pretrained(ckpt, variant='bf16', torch_dtype=dtype)
         self.pipe.to(self.device)
 
         # Cast submodules and set eval
@@ -30,23 +31,22 @@ class DiT(Backbone):
 
     @torch.inference_mode()
     def prepare_noise(
-        self, batch_size: int,
+        self, seeds: List[int],
     ) -> torch.Tensor:
         """
         Generate initial Gaussian noise in latent space using numpy.
         """
         C = self.pipe.transformer.config.in_channels
         height = width = self.pipe.transformer.config.sample_size
-        shape = (batch_size, C, height, width)
-        noise = np.random.randn(*shape)
+        shape = (C, height, width)
+        noise = np.stack([np.random.RandomState(s).randn(*shape) for s in seeds], axis=0)
         return torch.from_numpy(noise).to(self.device).to(torch.float32)
 
     @torch.inference_mode()
     def decode_vae(
         self,
         latents: torch.Tensor,
-        output_type: str = 'pil'
-    ) -> Union[torch.Tensor, 'PIL.Image.Image']:
+    ) -> Union[torch.Tensor, Image.Image]:
         """
         Decode latent tensor to image.
         """
@@ -60,33 +60,30 @@ class DiT(Backbone):
     @torch.inference_mode()
     def get_model_fn(
         self,
-        class_ids = [0],
+        pos_conds = [0],
         guidance_scale: float = 4.0,
-        seed: Union[int, None] = None
-    ) -> 'PIL.Image.Image':
-        """
-        Run a simple Euler sampling loop over num_steps timesteps.
-        Seed is applied here, and noise is generated via numpy.
-        """
-        if seed is not None:
-            np.random.seed(seed)
+        seeds: Union[int, None] = None
+    ) -> Tuple[callable, NoiseScheduleFlow, torch.Tensor]:
+        batch_size = len(pos_conds)
+        if seeds is None:
+            seeds = [42 for _ in range(batch_size)]
+        assert len(seeds) == batch_size
 
-        latents = self.prepare_noise(len(class_ids))
-        noise_schedule = NoiseScheduleVP(schedule="discrete", betas=self.pipe.scheduler.betas, dtype=self.dtype)
-        class_labels = torch.tensor(class_ids, device=self.device).reshape(-1)
-        class_null = torch.tensor([1000] * len(class_ids), device=self.device)
+        latents = self.prepare_noise(seeds)
+        noise_schedule = NoiseScheduleFlow(schedule="discrete_flow")
+        class_labels = torch.tensor(pos_conds, device=self.device).reshape(-1)
+        class_null = torch.tensor([1000] * len(pos_conds), device=self.device)
 
         @torch.inference_mode()
         def inner_model_fn(x, t, cond, **kwargs):
             x = x.to(kwargs['dtype'])
-            pred = self.pipe.transformer(x, timestep=t, class_labels=cond).sample
-            pred = pred[:, :x.shape[1]]
-            return pred
+            pred = self.pipe.transformer(x, timestep=t, class_labels=cond)
+            return gm_to_mean(pred)
         
         model_fn = model_wrapper(
                 inner_model_fn,
                 noise_schedule,
-                model_type="noise",
+                model_type="flow",
                 guidance_type="classifier-free",
                 model_kwargs={"dtype": self.dtype},
                 condition=class_labels,

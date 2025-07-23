@@ -310,7 +310,7 @@ class UniPC_Solver(Solver):
 
     def sample(self, x, steps=20, t_start=None, t_end=None, order=2, skip_type='time_uniform',
         method='multistep', lower_order_final=True, denoise_to_zero=False, atol=0.0078, rtol=0.05, return_intermediate=False,
-        flow_shift=1.0
+        flow_shift=1.0, **kwargs
     ):
         """
         Compute the sample at time `t_end` by UniPC, given the initial `x` at time `t_start`.

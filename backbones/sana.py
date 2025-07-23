@@ -1,14 +1,12 @@
 import torch
 import numpy as np
 from diffusers import SanaPipeline
-from typing import Tuple, Union
+from typing import Optional, List, Tuple, Union
 from .backbone import Backbone
 from solvers.common import NoiseScheduleFlow, model_wrapper
+from PIL import Image
 
 class SANA(Backbone):
-    """
-    SANA diffusion sampler wrapping HuggingFace diffusers' SanaPipeline.
-    """
     def __init__(
         self,
         device: Union[str, torch.device] = 'cuda',
@@ -30,27 +28,30 @@ class SANA(Backbone):
 
     @torch.inference_mode()
     def prepare_noise(
-        self, batch_size: int, height: int, width: int
+        self, seeds: List[int],
     ) -> torch.Tensor:
         """
         Generate initial Gaussian noise in latent space using numpy.
         """
         C = self.pipe.transformer.config.in_channels
-        scale = self.pipe.vae_scale_factor
-        shape = (batch_size, C, height // scale, width // scale)
-        noise = np.random.randn(*shape)
+        height = width = self.pipe.transformer.config.sample_size
+        shape = (C, height, width)
+        noise = np.stack([np.random.RandomState(s).randn(*shape) for s in seeds], axis=0)
         return torch.from_numpy(noise).to(self.device).to(torch.float32)
 
     @torch.inference_mode()
     def encode(
-        self, pos_text: str, neg_text: str
+        self, pos_texts: List[str], neg_texts: Optional[List[str]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Tokenize and encode positive and negative prompts for classifier-free guidance.
         """
+        if neg_texts is None:
+            neg_texts = [""] * len(pos_texts)
+
         embeds, attn_mask, neg_embeds, neg_mask = self.pipe.encode_prompt(
-            prompt=pos_text,
-            negative_prompt=neg_text,
+            prompt=pos_texts,
+            negative_prompt=neg_texts,
             num_images_per_prompt=1,
             do_classifier_free_guidance=True,
             device=self.device
@@ -62,7 +63,7 @@ class SANA(Backbone):
         self,
         latents: torch.Tensor,
         output_type: str = 'pil'
-    ) -> Union[torch.Tensor, 'PIL.Image.Image']:
+    ) -> Union[torch.Tensor, Image.Image]:
         """
         Decode latent tensor to image.
         """
@@ -73,23 +74,18 @@ class SANA(Backbone):
     @torch.inference_mode()
     def get_model_fn(
         self,
-        pos_text: str,
-        neg_text: str = '',
+        pos_conds: List[str],
+        neg_conds: Optional[List[str]] = None,
         guidance_scale: float = 4.5,
-        height: int = 1024,
-        width: int = 1024,
-        seed: Union[int, None] = None
-    ) -> 'PIL.Image.Image':
-        """
-        Run a simple Euler sampling loop over num_steps timesteps.
-        Seed is applied here, and noise is generated via numpy.
-        """
-        if seed is not None:
-            np.random.seed(seed)
+        seeds: Optional[List[int]] = None,
+    ) -> Tuple[callable, NoiseScheduleFlow, torch.Tensor]:
+        batch_size = len(pos_conds)
+        if seeds is None:
+            seeds = [42 for _ in range(batch_size)]
+        assert len(seeds) == batch_size
 
-        embeds, attn_mask, neg_embeds, neg_mask = self.encode(pos_text, neg_text)
-        latents = self.prepare_noise(1, height, width)
-
+        embeds, attn_mask, neg_embeds, neg_mask = self.encode(pos_conds, neg_conds)
+        latents = self.prepare_noise(seeds)
         noise_schedule = NoiseScheduleFlow(schedule="discrete_flow")
 
         @torch.inference_mode()
