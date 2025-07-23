@@ -113,7 +113,8 @@ def main():
             flow_shift=config.flow_shift
         ).data.cpu()
 
-        torch.save(samples, config.save_dir / f"{start}:{end}.pt")
+        for index in range(start, end):
+            torch.save(samples[index-start], config.save_dir / f"{index}.pt")
 
 if __name__ == '__main__':
     main()
