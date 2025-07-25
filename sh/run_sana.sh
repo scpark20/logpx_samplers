@@ -16,7 +16,7 @@ ALGO=data_prediction
 SKIP=time_uniform_flow
 FLOW_SHIFT=1.0
 ORDER=2
-N_SAMPLES=10000
+N_SAMPLES=1000
 
 SOLVERS=("Euler" "DPM-Solver" "UniPC")
 NFES=(5 6 8 10)

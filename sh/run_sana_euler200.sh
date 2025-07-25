@@ -19,7 +19,7 @@ ORDER=2
 N_SAMPLES=1000
 
 SOLVERS=("Euler")
-NFES=(100)
+NFES=(200)
 CFGS=(1.5 3.5 5.5 7.5 9.5)
 
 for solver in "${SOLVERS[@]}"; do
