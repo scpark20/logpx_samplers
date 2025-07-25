@@ -103,11 +103,22 @@ Built upon HuggingFace `diffusers`, OpenAI `guided-diffusion`, and popular solve
 
 ---
 
-## To-Do
+## To-Do List
 
-1. AMED-Solver
-2. Diff-Solver
-3. GITS
-4. DDP run
-5. FID evaluation
-6. CLIP Score evaluation
+### ✅ Backbones
+- SANA Backbone ✅
+- PixArt-Sigma Backbone ✅
+- DiT Backbone ✅
+- GMDiT Backbone ✅
+
+### ✅ Solvers
+- Euler Solver ✅
+- AMED-Solver ✅
+- Diff-Solver ❌
+- GITS ❌
+
+### ✅ Utils
+- Single run ✅
+- DDP run ❌
+- FID evaluation ❌
+- CLIP Score evaluation ❌
