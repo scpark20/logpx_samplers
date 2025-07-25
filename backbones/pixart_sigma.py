@@ -1,24 +1,24 @@
 import torch
 import numpy as np
-from diffusers import SanaPipeline
+from diffusers import PixArtSigmaPipeline
 from typing import Optional, List, Tuple, Union
 from .backbone import Backbone
-from solvers.common import NoiseScheduleFlow, model_wrapper
+from solvers.common import NoiseScheduleVP, model_wrapper
 from PIL import Image
 
-class SANA(Backbone):
+class PixArtSigma(Backbone):
     def __init__(
         self,
         device: Union[str, torch.device] = 'cuda',
         dtype: torch.dtype = torch.bfloat16,
-        model_id: str = 'Efficient-Large-Model/SANA1.5_1.6B_1024px_diffusers'
+        model_id: str = "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS"
     ):
         super().__init__()
         self.device = torch.device(device)
         self.dtype = dtype
 
         # Load and move pipeline
-        self.pipe = SanaPipeline.from_pretrained(model_id, torch_dtype=dtype)
+        self.pipe = PixArtSigmaPipeline.from_pretrained(model_id, torch_dtype=dtype)
         self.pipe.to(self.device)
 
         # Cast submodules and set eval
@@ -49,13 +49,9 @@ class SANA(Backbone):
         if neg_texts is None:
             neg_texts = [""] * len(pos_texts)
 
-        embeds, attn_mask, neg_embeds, neg_mask = self.pipe.encode_prompt(
-            prompt=pos_texts,
-            negative_prompt=neg_texts,
-            num_images_per_prompt=1,
-            do_classifier_free_guidance=True,
-            device=self.device
-        )
+        embeds, attn_mask, neg_embeds, neg_mask = self.pipe.encode_prompt(prompt=pos_texts,
+                                    device=self.device, num_images_per_prompt=1,
+                                    do_classifier_free_guidance=True, negative_prompt=neg_texts)
         return embeds, attn_mask, neg_embeds, neg_mask
 
     @torch.inference_mode()
@@ -67,6 +63,7 @@ class SANA(Backbone):
         """
         Decode latent tensor to image.
         """
+        
         lat = (latents / self.pipe.vae.config.scaling_factor).to(self.dtype)
         img_tensor = self.pipe.vae.decode(lat, return_dict=False)[0]
         return self.pipe.image_processor.postprocess(img_tensor, output_type=output_type)
@@ -78,31 +75,35 @@ class SANA(Backbone):
         neg_conds: Optional[List[str]] = None,
         guidance_scale: float = 4.5,
         seeds: Optional[List[int]] = None,
-    ) -> Tuple[callable, NoiseScheduleFlow, torch.Tensor]:
+    ) -> Tuple[callable, NoiseScheduleVP, torch.Tensor]:
         batch_size = len(pos_conds)
         if seeds is None:
             seeds = [42 for _ in range(batch_size)]
         assert len(seeds) == batch_size
 
         embeds, attn_mask, neg_embeds, neg_mask = self.encode(pos_conds, neg_conds)
-        latents = self.prepare_noise(seeds)
-        noise_schedule = NoiseScheduleFlow(schedule="discrete_flow")
+        latents = self.prepare_noise(batch_size, seeds)
+        noise_schedule = NoiseScheduleVP(schedule="discrete", betas=self.pipe.scheduler.betas, dtype=self.dtype)
 
         @torch.inference_mode()
         def inner_model_fn(x, t, cond, **kwargs):
             x = x.to(kwargs['dtype'])
             mask = torch.cat([kwargs['neg_mask'], kwargs['attn_mask']], dim=0)
-            pred = self.pipe.transformer(x, encoder_hidden_states=cond, encoder_attention_mask=mask, timestep=t, return_dict=False)[0]
+            added_cond_kwargs = {"resolution": None, "aspect_ratio": None}
+            pred = self.pipe.transformer(x, timestep=t, encoder_hidden_states=cond, encoder_attention_mask=mask,
+                                        added_cond_kwargs=added_cond_kwargs, return_dict=False)[0]
+            pred = pred.chunk(2, dim=1)[0]
             return pred
         
         model_fn = model_wrapper(
                 inner_model_fn,
                 noise_schedule,
-                model_type="flow",
+                model_type="noise",
                 model_kwargs={"attn_mask": attn_mask, "neg_mask": neg_mask, "dtype": self.dtype},
                 guidance_type="classifier-free",
                 condition=embeds,
                 unconditional_condition=neg_embeds,
                 guidance_scale=guidance_scale,
         )
+
         return model_fn, noise_schedule, latents
