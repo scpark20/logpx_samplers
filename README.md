@@ -100,3 +100,14 @@ pip install -r requirements.txt
 ## Acknowledgements
 
 Built upon HuggingFace `diffusers`, OpenAI `guided-diffusion`, and popular solvers like DPM-Solver and UniPC.
+
+---
+
+## To-Do
+
+1. AMED-Solver
+2. Diff-Solver
+3. GITS
+4. DDP run
+5. FID evaluation
+6. CLIP Score evaluation
