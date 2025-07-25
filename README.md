@@ -112,8 +112,10 @@ Built upon HuggingFace `diffusers`, OpenAI `guided-diffusion`, and popular solve
 - GMDiT Backbone ✅
 
 ### ✅ Solvers
-- Euler Solver ✅
-- AMED-Solver ✅
+- Euler ✅
+- DPM-Solver ✅
+- UniPC ✅
+- AMED-Solver ❌
 - Diff-Solver ❌
 - GITS ❌
 
