@@ -1,6 +1,8 @@
 import argparse
 import os
+import re
 import sys
+import json
 import math
 import torch
 import numpy as np
@@ -10,6 +12,7 @@ from tqdm import tqdm
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run sampling")
+    parser.add_argument('--tag',             type=str,   default='tag')
     parser.add_argument('--model',           type=str,   default='SANA')
     parser.add_argument('--solver',          type=str,   default='DPM-Solver')
     parser.add_argument('--algorithm_type',  type=str,   default='data_prediction')
@@ -20,7 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--order',           type=int,   default=2)
     parser.add_argument('--data',            type=str,   default='MSCOCO2017')
     parser.add_argument('--save_root',       type=str,   default='/data/scpark/samplings/')
-    parser.add_argument('--n_samples',       type=int,   default=10)
+    parser.add_argument('--n_samples',       type=int,   default=100)
     parser.add_argument('--batch_size',      type=int,   default=5)
     return parser
 
@@ -28,20 +31,6 @@ def parse_args() -> EasyDict:
     parser = build_parser()
     args = parser.parse_args()
     return EasyDict(vars(args))
-
-def get_sampling_dir(config: EasyDict) -> Path:
-    parts = [
-        config.data,
-        config.solver,
-        config.algorithm_type,
-        config.skip_type,
-        f"FS{config.flow_shift}",
-        f"NFE{config.NFE}",
-        f"CFG{config.CFG}",
-        f"ORDER{config.order}",
-    ]
-    name = config.model + "".join(f"({p})" for p in parts)
-    return Path(config.save_root) / name
 
 def get_model(config: EasyDict):
     if config.model == 'SANA':
@@ -79,10 +68,25 @@ def get_data(config: EasyDict):
         return [i%1000 for i in range(10000)]
     raise ValueError(f"Unknown data: {config.data}")
 
+def get_sampling_dir(config):
+    p, r = config.tag, config.save_root
+    os.makedirs(config.save_root, exist_ok=True)
+    i = max([int(m.group(1))
+             for d in os.listdir(r)
+             if (m := re.match(rf'{re.escape(p)}_(\d+)$', d))]
+            or [-1])
+    sampling_dir = os.path.join(r, f"{p}_{i+1}")
+    os.makedirs(sampling_dir, exist_ok=True)        
+    return sampling_dir
+
+def save_config(config):
+    with open(os.path.join(config.save_dir, 'config.json'), 'w') as f:
+        json.dump(vars(config), f, indent=2)
+
 def main():
     config = parse_args()
     config.save_dir = get_sampling_dir(config)
-    os.makedirs(config.save_dir, exist_ok=True)
+    save_config(config)
 
     model  = get_model(config)
     Solver = get_solver(config)
@@ -114,7 +118,7 @@ def main():
         ).data.cpu()
 
         for index in range(start, end):
-            torch.save(samples[index-start], config.save_dir / f"{index}.pt")
+            torch.save(samples[index-start], os.path.join(config.save_dir, f"{index}.pt"))
 
 if __name__ == '__main__':
     main()
