@@ -272,7 +272,6 @@ def model_wrapper(
     guidance_scale=1.0,
     pag_scale=1.0,
     pag_applied_layers=[],
-    interval_guidance=[0, 1.0],
     classifier_fn=None,
     classifier_kwargs={},
 ):
@@ -430,7 +429,6 @@ def model_wrapper(
             if (
                 guidance_scale == 1.0
                 or unconditional_condition is None
-                or not (interval_guidance[0] < t_continuous[0] < interval_guidance[1])
             ):
                 return noise_pred_fn(x, t_continuous, cond=condition)
             else:
@@ -442,106 +440,12 @@ def model_wrapper(
                 except:
                     noise_uncond, noise = noise_pred_fn(x_in, t_in, cond=c_in)[0].chunk(2)
                 return noise_uncond + guidance_scale * (noise - noise_uncond)
-        elif guidance_tp == "classifier-free_PAG":
-            for i in pag_applied_layers:
-                if isinstance(model, torch.nn.Module):
-                    model.blocks[i].attn.forward = (
-                        PAGIdentitySelfAttnProcessorLiteLA(model.blocks[i].attn)
-                        if guidance_scale == 1.0
-                        else PAGCFGIdentitySelfAttnProcessorLiteLA(model.blocks[i].attn)
-                    )
-                else:
-                    model.__self__.blocks[i].attn.forward = (
-                        PAGIdentitySelfAttnProcessorLiteLA(model.__self__.blocks[i].attn)
-                        if guidance_scale == 1.0
-                        else PAGCFGIdentitySelfAttnProcessorLiteLA(model.__self__.blocks[i].attn)
-                    )
-            num_inputs = 2 if guidance_scale == 1.0 else 3
-            x_in = torch.cat([x] * num_inputs)
-            t_in = torch.cat([t_continuous] * num_inputs)
-            c_in = torch.cat(
-                [condition, condition] if guidance_scale == 1.0 else [unconditional_condition, condition, condition]
-            )
-
-            try:
-                chunks = noise_pred_fn(x_in, t_in, cond=c_in).chunk(num_inputs)
-            except:
-                chunks = noise_pred_fn(x_in, t_in, cond=c_in)[0].chunk(num_inputs)
-
-            if guidance_scale == 1.0:
-                noise, noise_perturb = chunks
-                noise_pred = noise + pag_scale * (noise - noise_perturb)
-            else:
-                noise_uncond, noise, noise_perturb = chunks
-                noise_pred = (
-                    noise_uncond + guidance_scale * (noise - noise_uncond) + pag_scale * (noise - noise_perturb)
-                )
-            for i in pag_applied_layers:
-                if isinstance(model, torch.nn.Module):
-                    model.blocks[i].attn.forward = SelfAttnProcessorLiteLA(model.blocks[i].attn)
-                else:
-                    model.__self__.blocks[i].attn.forward = SelfAttnProcessorLiteLA(model.__self__.blocks[i].attn)
-
-            return noise_pred
-        elif guidance_tp == "classifier-free_PAG_seq":
-            num_inputs = 2
-            if t_continuous[0] < 0.5:
-                # cfg
-                if (
-                    guidance_scale == 1.0
-                    or unconditional_condition is None
-                    or not (interval_guidance[0] < t_continuous[0] < interval_guidance[1])
-                ):
-                    return noise_pred_fn(x, t_continuous, cond=condition)
-
-                x_in = torch.cat([x] * num_inputs)
-                t_in = torch.cat([t_continuous] * num_inputs)
-                c_in = torch.cat([unconditional_condition, condition])
-
-                try:
-                    noise_uncond, noise = noise_pred_fn(x_in, t_in, cond=c_in).chunk(2)
-                except:
-                    noise_uncond, noise = noise_pred_fn(x_in, t_in, cond=c_in)[0].chunk(num_inputs)
-                return noise_uncond + guidance_scale * (noise - noise_uncond)
-            else:
-                # pag
-                for i in pag_applied_layers:
-                    if isinstance(model, torch.nn.Module):
-                        model.blocks[i].attn.forward = (
-                            PAGIdentitySelfAttnProcessorLiteLA(model.blocks[i].attn)
-                            if guidance_scale == 1.0
-                            else PAGCFGIdentitySelfAttnProcessorLiteLA(model.blocks[i].attn)
-                        )
-                    else:
-                        model.__self__.blocks[i].attn.forward = (
-                            PAGIdentitySelfAttnProcessorLiteLA(model.__self__.blocks[i].attn)
-                            if guidance_scale == 1.0
-                            else PAGCFGIdentitySelfAttnProcessorLiteLA(model.__self__.blocks[i].attn)
-                        )
-                x_in = torch.cat([x] * 3)
-                t_in = torch.cat([t_continuous] * 3)
-                c_in = torch.cat([unconditional_condition, condition, condition])
-
-                try:
-                    noise_uncond, noise, noise_perturb = noise_pred_fn(x_in, t_in, cond=c_in).chunk(3)
-                except:
-                    noise_uncond, noise, noise_perturb = noise_pred_fn(x_in, t_in, cond=c_in)[0].chunk(3)
-
-                for i in pag_applied_layers:
-                    if isinstance(model, torch.nn.Module):
-                        model.blocks[i].attn.forward = SelfAttnProcessorLiteLA(model.blocks[i].attn)
-                    else:
-                        model.__self__.blocks[i].attn.forward = SelfAttnProcessorLiteLA(model.__self__.blocks[i].attn)
-
-                return noise_uncond + guidance_scale * (noise - noise_uncond) + pag_scale * (noise - noise_perturb)
 
     assert model_type in ["noise", "x_start", "v", "score", "flow"]
     assert guidance_type in [
         "uncond",
         "classifier",
         "classifier-free",
-        "classifier-free_PAG",
-        "classifier-free_PAG_seq",
     ]
     return model_fn
 
