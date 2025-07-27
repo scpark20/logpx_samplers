@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-TAG=pixartsam
+TAG=euler_vs_dpm
 MODEL=PixArt-Sigma
 DATA=MSCOCO2017
 SAVE_ROOT=samplings/pixart/sam
