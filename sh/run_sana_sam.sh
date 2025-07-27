@@ -9,12 +9,12 @@ BATCH_SIZE=5
 ALGO=data_prediction
 SKIP=time_uniform_flow
 ORDER=2
-N_SAMPLES=5
+N_SAMPLES=100
 
 SOLVERS=("Euler" "DPM-Solver")
-NFES=(5 10)
-CFGS=(3.5 5.5)
-FLOW_SHIFTS=(1.0 3.0)
+NFES=(5 6 8 10 12 15 20)
+CFGS=(1.5 3.5 5.5 7.5)
+FLOW_SHIFTS=(1.0 2.0 3.0)
 
 for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do

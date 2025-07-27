@@ -82,7 +82,7 @@ class PixArtSigma(Backbone):
         assert len(seeds) == batch_size
 
         embeds, attn_mask, neg_embeds, neg_mask = self.encode(pos_conds, neg_conds)
-        latents = self.prepare_noise(batch_size, seeds)
+        latents = self.prepare_noise(seeds)
         noise_schedule = NoiseScheduleVP(schedule="discrete", betas=self.pipe.scheduler.betas, dtype=self.dtype)
 
         @torch.inference_mode()
