@@ -11,9 +11,10 @@ class DiT(Backbone):
         self,
         device: Union[str, torch.device] = 'cuda',
         dtype: torch.dtype = torch.bfloat16,
-        model_id: str = "facebook/DiT-XL-2-256"
+        model_id: str = "facebook/DiT-XL-2-256",
+        trainable = False
     ):
-        super().__init__()
+        super().__init__(trainable)
         self.device = torch.device(device)
         self.dtype = dtype
 
@@ -24,22 +25,22 @@ class DiT(Backbone):
         # Cast submodules and set eval
         for submod in (self.pipe.vae, self.pipe.transformer):
             submod.to(dtype)
-            submod.eval()
+            if not trainable:
+                submod.eval()
 
-    @torch.inference_mode()
     def prepare_noise(
         self, seeds: List[int],
     ) -> torch.Tensor:
         """
         Generate initial Gaussian noise in latent space using numpy.
         """
-        C = self.pipe.transformer.config.in_channels
-        height = width = self.pipe.transformer.config.sample_size
-        shape = (C, height, width)
-        noise = np.stack([np.random.RandomState(s).randn(*shape) for s in seeds], axis=0)
-        return torch.from_numpy(noise).to(self.device).to(torch.float32)
+        with self.context:
+            C = self.pipe.transformer.config.in_channels
+            height = width = self.pipe.transformer.config.sample_size
+            shape = (C, height, width)
+            noise = np.stack([np.random.RandomState(s).randn(*shape) for s in seeds], axis=0)
+            return torch.from_numpy(noise).to(self.device).to(torch.float32)
 
-    @torch.inference_mode()
     def decode_vae(
         self,
         latents: torch.Tensor,
@@ -47,14 +48,14 @@ class DiT(Backbone):
         """
         Decode latent tensor to image.
         """
-        lat = (latents / self.pipe.vae.config.scaling_factor).to(self.dtype)
-        samples = self.pipe.vae.decode(lat).sample
-        samples = (samples / 2 + 0.5).clamp(0, 1)
-        samples = samples.cpu().permute(0, 2, 3, 1).float().numpy()
-        samples = self.pipe.numpy_to_pil(samples)
-        return samples
+        with self.context:
+            lat = (latents / self.pipe.vae.config.scaling_factor).to(self.dtype)
+            samples = self.pipe.vae.decode(lat).sample
+            samples = (samples / 2 + 0.5).clamp(0, 1)
+            samples = samples.cpu().permute(0, 2, 3, 1).float().numpy()
+            samples = self.pipe.numpy_to_pil(samples)
+            return samples
 
-    @torch.inference_mode()
     def get_model_fn(
         self,
         pos_conds = [0],
@@ -71,12 +72,12 @@ class DiT(Backbone):
         class_labels = torch.tensor(pos_conds, device=self.device).reshape(-1)
         class_null = torch.tensor([1000] * len(pos_conds), device=self.device)
 
-        @torch.inference_mode()
         def inner_model_fn(x, t, cond, **kwargs):
-            x = x.to(kwargs['dtype'])
-            pred = self.pipe.transformer(x, timestep=t, class_labels=cond).sample
-            pred = pred[:, :x.shape[1]]
-            return pred
+            with self.context:
+                x = x.to(kwargs['dtype'])
+                pred = self.pipe.transformer(x, timestep=t, class_labels=cond).sample
+                pred = pred[:, :x.shape[1]]
+                return pred
         
         model_fn = model_wrapper(
                 inner_model_fn,

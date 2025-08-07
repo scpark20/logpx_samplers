@@ -188,6 +188,9 @@ class NoiseScheduleVP:
         log_std = 0.5 * torch.log(1.0 - torch.exp(2.0 * log_mean_coeff))
         return log_mean_coeff - log_std
 
+    def marginal_rho(self, t):
+        return 1. / self.marginal_lambda(t).exp()
+
     def inverse_lambda(self, lamb):
         """
         Compute the continuous-time label t in [0, T] of a given half-logSNR lambda_t.
@@ -243,6 +246,9 @@ class NoiseScheduleFlow:
         log_mean_coeff = self.marginal_log_mean_coeff(t)
         log_std = torch.log(self.marginal_std(t))
         return log_mean_coeff - log_std
+
+    def marginal_rho(self, t):
+        return 1. / self.marginal_lambda(t).exp()
 
     @staticmethod
     def inverse_lambda(lamb):

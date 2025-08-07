@@ -1,13 +1,15 @@
 import torch
 import numpy as np
 from typing import Tuple, Union
+from contextlib import nullcontext
 
 class Backbone:
     """
     Base class for diffusion pipelines. Subclasses must implement encode and sample methods.
     """
-    def __init__(self):
+    def __init__(self, trainable=False):
         self.pipe = None
+        self.context = nullcontext() if trainable else torch.inference_mode()
 
     def encode(
         self,

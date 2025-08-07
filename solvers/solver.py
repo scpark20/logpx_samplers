@@ -1,37 +1,21 @@
-# Copyright 2024 NVIDIA CORPORATION & AFFILIATES
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# SPDX-License-Identifier: Apache-2.0
-
-# This file is modified from https://github.com/PixArt-alpha/PixArt-sigma
-
 import os
 import torch
+import torch.nn as nn
 from tqdm import tqdm
 from .common import interpolate_fn, expand_dims
+from torch.utils.checkpoint import checkpoint
 
-class Solver:
+class Solver(nn.Module):
     def __init__(
         self,
         model_fn,
         noise_schedule,
         algorithm_type
     ):
-        
+        super().__init__()
         self.model = lambda x, t: model_fn(x, t.expand(x.shape[0]))
         self.noise_schedule = noise_schedule
-        assert algorithm_type in ["noise_prediction", "data_prediction", "vector_prediction"]
+        assert algorithm_type in ["noise_prediction", "data_prediction", "vector_prediction", "dual_prediction"]
         self.algorithm_type = algorithm_type
         self.correcting_x0_fn = None
 
@@ -68,6 +52,9 @@ class Solver:
         alpha_t, sigma_t = self.noise_schedule.marginal_alpha(t), self.noise_schedule.marginal_std(t)
         vector = (x - noise) / -(1 - sigma_t)
         return vector
+
+    def checkpoint_model_fn(self, x, t):
+        return checkpoint(self.model_fn, x, t, use_reentrant=True)
     
     def model_fn(self, x, t):
         """
@@ -77,8 +64,11 @@ class Solver:
             return self.data_prediction_fn(x, t)
         elif self.algorithm_type == "noise_prediction":
             return self.noise_prediction_fn(x, t)
-        else:
+        elif self.algorithm_type == "vector_prediction":
             return self.vector_prediction_fn(x, t)
+        elif self.algorithm_type == "dual_prediction":
+            return (self.data_prediction_fn(x, t), self.noise_prediction_fn(x, t))
+        return None
 
     def denoise_to_zero_fn(self, x, s):
         """

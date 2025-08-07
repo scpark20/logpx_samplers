@@ -1,7 +1,6 @@
-import os
 import torch
-from tqdm import tqdm
 from .solver import Solver
+from tqdm import tqdm
 
 class Euler_Solver(Solver):
     def __init__(
@@ -24,7 +23,7 @@ class Euler_Solver(Solver):
             noise_rates = torch.tensor([self.noise_schedule.marginal_std(t) for t in timesteps], device=device)
             
             x_t = x
-            for i in range(0, steps):
+            for i in tqdm(range(0, steps)):
 
                 h = lambdas[i+1] - lambdas[i]
                 model_t = self.model_fn(x_t, timesteps[i])
@@ -32,15 +31,21 @@ class Euler_Solver(Solver):
                 if self.algorithm_type == 'vector_prediction':
                     sample_coeff = 1
                     model_coeff = (timesteps[i+1] - timesteps[i])
-                    
-                elif self.algorithm_type == 'noise_prediction':
-                    sample_coeff = signal_rates[i+1]/signal_rates[i]
-                    model_coeff = -noise_rates[i+1]*torch.expm1(h)
+                    x_t = sample_coeff*x_t + model_coeff*model_t
                     
                 elif self.algorithm_type == 'data_prediction':
                     sample_coeff = noise_rates[i+1]/noise_rates[i]
                     model_coeff = -signal_rates[i+1]*torch.expm1(-h)
-                    
-                x_t = sample_coeff*x_t + model_coeff*model_t
+                    x_t = sample_coeff*x_t + model_coeff*model_t
+
+                elif self.algorithm_type == 'noise_prediction':
+                    sample_coeff = signal_rates[i+1]/signal_rates[i]
+                    model_coeff = -noise_rates[i+1]*torch.expm1(h)
+                    x_t = sample_coeff*x_t + model_coeff*model_t
+                
+                elif self.algorithm_type == 'dual_prediction':
+                    data_coeff = signal_rates[i+1]-signal_rates[i]
+                    noise_coeff = noise_rates[i+1]-noise_rates[i]
+                    x_t = x_t + data_coeff*model_t[0] + noise_coeff*model_t[1]
                     
         return x_t
