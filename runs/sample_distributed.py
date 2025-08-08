@@ -11,7 +11,7 @@ from pathlib import Path
 from tqdm import tqdm
 import torch.distributed as dist
 import torch.multiprocessing as mp
-
+import torchvision
 from .sample import get_sampling_dir, get_solver, get_data
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,6 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--save_root',       type=str,   default='/data/scpark/samplings/')
     parser.add_argument('--n_samples',       type=int,   default=1000)
     parser.add_argument('--batch_size',      type=int,   default=5)
+    parser.add_argument('--result_type',     type=str,   default='all') # latent, pixel, all
     parser.add_argument("--port",            type=str, default="12355")
     return parser
 
@@ -114,17 +115,31 @@ def sample(rank, world_size, config):
             noise_schedule,
             algorithm_type=config.algorithm_type
         )
-        samples = solver.sample(
+        samples_latent = solver.sample(
             latents,
             steps=config.NFE,
             order=config.order,
             skip_type=config.skip_type,
             flow_shift=config.flow_shift
-        ).data.cpu()
+        )
+
+        if config.result_type == 'all' or config.result_type == 'pixel':
+            samples_pixel = model.decode_vae(samples_latent, output_type='pt')
+            samples_pixel = samples_pixel.data.cpu()
+        
+        samples_latent = samples_latent.data.cpu()
         
         # 저장할 때도 글로벌 인덱스 사용
         for i, global_idx in enumerate(range(global_start, global_end)):
-            torch.save(samples[i], config.save_dir / f"{global_idx}.pt")
+            if config.result_type == 'all':
+                torch.save(samples_latent[i], config.save_dir / f"{global_idx}.pt")
+                torchvision.utils.save_image(samples_pixel[i], config.save_dir / f"{global_idx}.png")
+            elif config.result_type == 'pixel':
+                torchvision.utils.save_image(samples_pixel[i], config.save_dir / f"{global_idx}.png")
+            elif config.result_type == 'latent':
+                torch.save(samples_latent[i], config.save_dir / f"{global_idx}.pt")
+            else:
+                raise ValueError(f"Unknown result type: {config.result_type}")
 
     dist.destroy_process_group()
 
