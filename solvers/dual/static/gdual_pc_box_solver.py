@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from ...solver import Solver
 
-class GDual_Box_Solver(Solver):
+class GDual_PC_Box_Solver(Solver):
     def __init__(
         self,
         model_fn,
@@ -32,9 +32,9 @@ class GDual_Box_Solver(Solver):
 
         # for gamma, tau_x, tau_e, kappa_x, kappa_e
         if len(param_dim) > 0:
-            self.params = nn.Parameter(torch.zeros(steps, 5, 1, *param_dim))
+            self.params = nn.Parameter(torch.zeros(steps, 2, 5, 1, *param_dim))
         else:
-            self.params = nn.Parameter(torch.zeros(steps, 5))
+            self.params = nn.Parameter(torch.zeros(steps, 2, 5))
             
     def u(self, alpha, sigma, gamma, tau):
         y_pos = alpha * sigma.pow(-gamma)      # gamma >= 0
@@ -78,16 +78,23 @@ class GDual_Box_Solver(Solver):
         
         return delta_c, ratio, box_inv_c, box_inv_n
 
-    def get_next_sample(self, sample, xc, xp, ec, ep, i, alphas, sigmas, gamma, tau_x, tau_e, kappa_x, kappa_e, order, eps=1e-8):
+    def get_next_sample(self, sample, xs, es, i, alphas, sigmas, gamma, tau_x, tau_e, kappa_x, kappa_e, order, eps=1e-8, corrector=False):
+        xn, xc, xp = xs
+        en, ec, ep = es
         delta_u, r_u, box_inv_uc, box_inv_un = self.compute_delta_and_ratio(self.u, alphas, sigmas, i, gamma, tau_x, eps)
         delta_v, r_v, box_inv_vc, box_inv_vn = self.compute_delta_and_ratio(self.v, alphas, sigmas, i, gamma, tau_e, eps)
         
         X = xc * (box_inv_un - box_inv_uc)
         E = ec * (box_inv_vn - box_inv_vc)
         
-        if r_u is not None and order == 2:
-            X += 0.5 * (xc - xp) / r_u.clamp_min(eps) * (box_inv_uc**(1-tau_x)*delta_u + self.O_delta_square(delta_u, kappa_x))
-            E += 0.5 * (ec - ep) / r_v.clamp_min(eps) * (box_inv_vc**(1-tau_e)*delta_v + self.O_delta_square(delta_v, kappa_e))
+        if order == 2:
+            if corrector:
+                X += 0.5 * (xn - xc) * (box_inv_uc**(1-tau_x)*delta_u + self.O_delta_square(delta_u, kappa_x))
+                E += 0.5 * (en - ec) * (box_inv_vc**(1-tau_e)*delta_v + self.O_delta_square(delta_v, kappa_e))
+            else:
+                X += 0.5 * (xc - xp) / r_u.clamp_min(eps) * (box_inv_uc**(1-tau_x)*delta_u + self.O_delta_square(delta_u, kappa_x))
+                E += 0.5 * (ec - ep) / r_v.clamp_min(eps) * (box_inv_vc**(1-tau_e)*delta_v + self.O_delta_square(delta_v, kappa_e))
+            
             
         pos_sample_coeff = (sigmas[i + 1] / sigmas[i]) ** gamma
         neg_sample_coeff = (alphas[i + 1] / alphas[i]) ** (-gamma)
@@ -98,7 +105,9 @@ class GDual_Box_Solver(Solver):
 
         return sample_coeff * sample + grad_coeff * (X + E)
 
-    def sample(self, x, **kwargs):
+    def sample(self, x, model_fn=None, **kwargs):
+        if model_fn is not None:
+            self.set_model_fn(model_fn)
         
         t_0 = 1.0 / self.noise_schedule.total_N
         t_T = self.noise_schedule.T
@@ -108,16 +117,25 @@ class GDual_Box_Solver(Solver):
         alphas = torch.tensor([self.noise_schedule.marginal_alpha(t) for t in timesteps], device=device)
         sigmas = torch.tensor([self.noise_schedule.marginal_std(t) for t in timesteps], device=device)
 
+        x_pred = x
+        x_corr = x
+        xn, en = None, None
         xp, ep = None, None
-        xc, ec = self.checkpoint_model_fn(x, timesteps[0])
+        xc, ec = self.checkpoint_model_fn(x_pred, timesteps[0])
         for i in tqdm(range(self.steps), disable=os.getenv("TQDM", "False")):
             p = min(i+1, self.steps - i, self.order) if self.lower_order_final else min(i+1, self.order)
-            gamma, tau_x, tau_e, kappa_x, kappa_e = self.params[i]
-            
-            x = self.get_next_sample(x, xc, xp, ec, ep, i, alphas, sigmas, gamma, tau_x, tau_e, kappa_x, kappa_e, p, self.eps)
+
+            # Predictor
+            gamma, tau_x, tau_e, kappa_x, kappa_e = self.params[i][0]
+            x_pred = self.get_next_sample(x_corr, (xn, xc, xp), (en, ec, ep), i, alphas, sigmas, gamma, tau_x, tau_e, kappa_x, kappa_e, p, self.eps, corrector=False)
 
             if i < self.steps - 1:
-                xp, ep = xc, ec
-                xc, ec = self.checkpoint_model_fn(x, timesteps[i + 1])
-                
-        return x
+                xn, en = self.checkpoint_model_fn(x_pred, timesteps[i + 1])
+
+            # Corrector
+            gamma, tau_x, tau_e, kappa_x, kappa_e = self.params[i][1]
+            x_corr = self.get_next_sample(x_corr, (xn, xc, xp), (en, ec, ep), i, alphas, sigmas, gamma, tau_x, tau_e, kappa_x, kappa_e, 2, self.eps, corrector=True)
+
+            xp = xc; ep = ec; xc = xn; ec = en
+            
+        return x_pred

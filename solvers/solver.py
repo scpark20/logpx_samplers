@@ -4,6 +4,7 @@ import torch.nn as nn
 from tqdm import tqdm
 from .common import interpolate_fn, expand_dims
 from torch.utils.checkpoint import checkpoint
+from torch.autograd.graph import save_on_cpu
 
 class Solver(nn.Module):
     def __init__(
@@ -13,11 +14,14 @@ class Solver(nn.Module):
         algorithm_type
     ):
         super().__init__()
-        self.model = lambda x, t: model_fn(x, t.expand(x.shape[0]))
+        self.set_model_fn(model_fn)
         self.noise_schedule = noise_schedule
         assert algorithm_type in ["noise_prediction", "data_prediction", "vector_prediction", "dual_prediction"]
         self.algorithm_type = algorithm_type
         self.correcting_x0_fn = None
+
+    def set_model_fn(self, model_fn):
+        self.model = lambda x, t: model_fn(x, t.expand(x.shape[0]))
 
     def dynamic_thresholding_fn(self, x0, t):
         """
@@ -54,7 +58,9 @@ class Solver(nn.Module):
         return vector
 
     def checkpoint_model_fn(self, x, t):
-        return checkpoint(self.model_fn, x, t, use_reentrant=True)
+        with save_on_cpu(pin_memory=True):
+            y = checkpoint(self.model_fn, x, t, use_reentrant=False)
+        return y
     
     def model_fn(self, x, t):
         """
@@ -67,7 +73,13 @@ class Solver(nn.Module):
         elif self.algorithm_type == "vector_prediction":
             return self.vector_prediction_fn(x, t)
         elif self.algorithm_type == "dual_prediction":
-            return (self.data_prediction_fn(x, t), self.noise_prediction_fn(x, t))
+            noise = self.noise_prediction_fn(x, t)
+            alpha_t = self.noise_schedule.marginal_alpha(t)
+            sigma_t = self.noise_schedule.marginal_std(t)
+            x0 = (x - sigma_t * noise) / alpha_t
+            if self.correcting_x0_fn is not None:
+                x0 = self.correcting_x0_fn(x0, t)
+            return (x0, noise)
         return None
 
     def denoise_to_zero_fn(self, x, s):

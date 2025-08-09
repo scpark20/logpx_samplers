@@ -25,8 +25,7 @@ class DiT(Backbone):
         # Cast submodules and set eval
         for submod in (self.pipe.vae, self.pipe.transformer):
             submod.to(dtype)
-            if not trainable:
-                submod.eval()
+            submod.eval()
 
     def prepare_noise(
         self, seeds: List[int],

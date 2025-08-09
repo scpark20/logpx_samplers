@@ -11,9 +11,11 @@ class PixArtSigma(Backbone):
         self,
         device: Union[str, torch.device] = 'cuda',
         dtype: torch.dtype = torch.bfloat16,
-        model_id: str = "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS"
+        model_id: str = "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
+        #model_id: str = "PixArt-alpha/PixArt-Sigma-XL-2-512-MS",
+        trainable = False
     ):
-        super().__init__()
+        super().__init__(trainable)
         self.device = torch.device(device)
         self.dtype = dtype
 
@@ -26,7 +28,6 @@ class PixArtSigma(Backbone):
             submod.to(dtype)
             submod.eval()
 
-    @torch.inference_mode()
     def prepare_noise(
         self, seeds: List[int],
     ) -> torch.Tensor:

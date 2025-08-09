@@ -11,9 +11,10 @@ class SANA(Backbone):
         self,
         device: Union[str, torch.device] = 'cuda',
         dtype: torch.dtype = torch.bfloat16,
-        model_id: str = 'Efficient-Large-Model/SANA1.5_1.6B_1024px_diffusers'
+        model_id: str = 'Efficient-Large-Model/SANA1.5_1.6B_1024px_diffusers',
+        trainable = False
     ):
-        super().__init__()
+        super().__init__(trainable)
         self.device = torch.device(device)
         self.dtype = dtype
 
@@ -26,18 +27,18 @@ class SANA(Backbone):
             submod.to(dtype)
             submod.eval()
 
-    @torch.inference_mode()
     def prepare_noise(
         self, seeds: List[int],
     ) -> torch.Tensor:
         """
         Generate initial Gaussian noise in latent space using numpy.
         """
-        C = self.pipe.transformer.config.in_channels
-        height = width = self.pipe.transformer.config.sample_size
-        shape = (C, height, width)
-        noise = np.stack([np.random.RandomState(s).randn(*shape) for s in seeds], axis=0)
-        return torch.from_numpy(noise).to(self.device).to(torch.float32)
+        with self.context:
+            C = self.pipe.transformer.config.in_channels
+            height = width = self.pipe.transformer.config.sample_size
+            shape = (C, height, width)
+            noise = np.stack([np.random.RandomState(s).randn(*shape) for s in seeds], axis=0)
+            return torch.from_numpy(noise).to(self.device).to(torch.float32)
 
     @torch.inference_mode()
     def encode(
@@ -67,11 +68,12 @@ class SANA(Backbone):
         """
         Decode latent tensor to image.
         """
-        lat = (latents / self.pipe.vae.config.scaling_factor).to(self.dtype)
-        img_tensor = self.pipe.vae.decode(lat, return_dict=False)[0]
-        return self.pipe.image_processor.postprocess(img_tensor, output_type=output_type)
 
-    @torch.inference_mode()
+        with self.context:
+            lat = (latents / self.pipe.vae.config.scaling_factor).to(self.dtype)
+            img_tensor = self.pipe.vae.decode(lat, return_dict=False)[0]
+            return self.pipe.image_processor.postprocess(img_tensor, output_type=output_type)
+
     def get_model_fn(
         self,
         pos_conds: List[str],
@@ -88,12 +90,12 @@ class SANA(Backbone):
         latents = self.prepare_noise(seeds)
         noise_schedule = NoiseScheduleFlow(schedule="discrete_flow")
 
-        @torch.inference_mode()
         def inner_model_fn(x, t, cond, **kwargs):
-            x = x.to(kwargs['dtype'])
-            mask = torch.cat([kwargs['neg_mask'], kwargs['attn_mask']], dim=0)
-            pred = self.pipe.transformer(x, encoder_hidden_states=cond, encoder_attention_mask=mask, timestep=t, return_dict=False)[0]
-            return pred
+            with self.context:
+                x = x.to(kwargs['dtype'])
+                mask = torch.cat([kwargs['neg_mask'], kwargs['attn_mask']], dim=0)
+                pred = self.pipe.transformer(x, encoder_hidden_states=cond, encoder_attention_mask=mask, timestep=t, return_dict=False)[0]
+                return pred
         
         model_fn = model_wrapper(
                 inner_model_fn,

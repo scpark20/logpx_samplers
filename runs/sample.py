@@ -25,6 +25,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--save_root',       type=str,   default='/data/scpark/samplings/')
     parser.add_argument('--n_samples',       type=int,   default=100)
     parser.add_argument('--batch_size',      type=int,   default=5)
+    parser.add_argument('--output_noise',    action='store_true',  default=False)
+    parser.add_argument('--output_traj',     action='store_true',  default=False)
+    parser.add_argument('--seed_offset',     type=int,   default=0)
     return parser
 
 def parse_args() -> EasyDict:
@@ -64,8 +67,8 @@ def get_solver(config: EasyDict):
 def get_data(config: EasyDict):
     if config.data == 'MSCOCO2017':
         return np.load('prompts/mscoco2017.npz')['arr_0'].tolist()
-    if config.data == 'Imagenet':
-        return [i%1000 for i in range(10000)]
+    if config.data == 'ImageNet':
+        return [i%1000 for i in range(config.n_samples)]
     raise ValueError(f"Unknown data: {config.data}")
 
 def get_sampling_dir(config):
@@ -81,7 +84,7 @@ def get_sampling_dir(config):
 
 def save_config(config):
     with open(os.path.join(config.save_dir, 'config.json'), 'w') as f:
-        json.dump(vars(config), f, indent=2)
+        json.dump(dict(config), f, indent=2)
 
 def main():
     config = parse_args()
@@ -97,28 +100,31 @@ def main():
                       total=n_iters, desc="Sampling batches"):
         end = min(start + config.batch_size, config.n_samples)
         conds = data[start:end]
-        seeds = list(range(start, end))
+        seeds = config.seed_offset + np.arange(start, end, dtype=int)
 
-        model_fn, noise_schedule, latents = model.get_model_fn(
+        model_fn, noise_schedule, noises = model.get_model_fn(
             pos_conds=conds,
             guidance_scale=config.CFG,
             seeds=seeds
         )
-        solver = Solver(
-            model_fn,
-            noise_schedule,
-            algorithm_type=config.algorithm_type
-        )
-        samples = solver.sample(
-            latents,
-            steps=config.NFE,
-            order=config.order,
-            skip_type=config.skip_type,
-            flow_shift=config.flow_shift
-        ).data.cpu()
+        solver = Solver(model_fn, noise_schedule, algorithm_type=config.algorithm_type)
+
+        outputs = solver.sample(noises, steps=config.NFE, order=config.order, skip_type=config.skip_type, flow_shift=config.flow_shift, output_traj=config.output_traj)
+        samples = outputs['samples'].detach().cpu()
+        if config.output_noise:
+            noises = noises.detach().cpu()
+        if config.output_traj:
+            trajs = outputs['trajs'].detach().cpu()    
 
         for index in range(start, end):
-            torch.save(samples[index-start], os.path.join(config.save_dir, f"{index}.pt"))
+            output = {'sample': samples[index-start],
+                      'cond': conds[index-start]
+                      }
+            if config.output_noise:
+                output['noise'] = noises[index-start]
+            if config.output_traj:
+                output['traj'] = trajs[index-start]
+            torch.save(output, os.path.join(config.save_dir, f"{index}.pt"))
 
 if __name__ == '__main__':
     main()
