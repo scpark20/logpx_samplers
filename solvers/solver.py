@@ -9,12 +9,10 @@ from torch.autograd.graph import save_on_cpu
 class Solver(nn.Module):
     def __init__(
         self,
-        model_fn,
         noise_schedule,
         algorithm_type
     ):
         super().__init__()
-        self.set_model_fn(model_fn)
         self.noise_schedule = noise_schedule
         assert algorithm_type in ["noise_prediction", "data_prediction", "vector_prediction", "dual_prediction"]
         self.algorithm_type = algorithm_type

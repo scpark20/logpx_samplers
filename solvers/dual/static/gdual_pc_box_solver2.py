@@ -5,6 +5,8 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from ...solver import Solver
 
+# tau_x, tau_e에 exp없애기
+
 class GDual_PC_Box_Solver(Solver):
     def __init__(
         self,
@@ -36,7 +38,6 @@ class GDual_PC_Box_Solver(Solver):
         else:
             init_params = torch.zeros(steps, 2, 5)
         # tau_x, tau_e    
-        init_params[:, :, 1:3] = -8.
         self.params = nn.Parameter(init_params)            
         
     def u(self, alpha, sigma, gamma, tau):
@@ -129,17 +130,15 @@ class GDual_PC_Box_Solver(Solver):
 
             # Predictor
             gamma, tau_x, tau_e, kappa_x, kappa_e = self.params[i][0]
-            tau_x, tau_e = torch.exp(tau_x), torch.exp(tau_e)
+            #tau_x, tau_e = torch.exp(tau_x), torch.exp(tau_e)
             x_pred = self.get_next_sample(x_corr, (xn, xc, xp), (en, ec, ep), i, alphas, sigmas, gamma, tau_x, tau_e, kappa_x, kappa_e, p, self.eps, corrector=False)
 
             if i < self.steps - 1:
                 xn, en = self.checkpoint_model_fn(x_pred, timesteps[i + 1])
-            else:
-                break
 
             # Corrector
             gamma, tau_x, tau_e, kappa_x, kappa_e = self.params[i][1]
-            tau_x, tau_e = torch.exp(tau_x), torch.exp(tau_e)
+            #tau_x, tau_e = torch.exp(tau_x), torch.exp(tau_e)
             x_corr = self.get_next_sample(x_corr, (xn, xc, xp), (en, ec, ep), i, alphas, sigmas, gamma, tau_x, tau_e, kappa_x, kappa_e, 2, self.eps, corrector=True)
 
             xp = xc; ep = ec; xc = xn; ec = en

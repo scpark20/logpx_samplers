@@ -102,14 +102,12 @@ def main():
         conds = data[start:end]
         seeds = config.seed_offset + np.arange(start, end, dtype=int)
 
-        model_fn, noise_schedule, noises = model.get_model_fn(
-            pos_conds=conds,
-            guidance_scale=config.CFG,
-            seeds=seeds
-        )
-        solver = Solver(model_fn, noise_schedule, algorithm_type=config.algorithm_type)
+        noise_schedule = model.get_noise_schedule()
+        model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
+        noises = model.get_noise(seeds=seeds)
+        solver = Solver(noise_schedule, config.NFE, order=config.order, skip_type=config.skip_type, flow_shift=config.flow_shift, algorithm_type=config.algorithm_type)
 
-        outputs = solver.sample(noises, steps=config.NFE, order=config.order, skip_type=config.skip_type, flow_shift=config.flow_shift, output_traj=config.output_traj)
+        outputs = solver.sample(noises, model_fn, output_traj=config.output_traj)
         samples = outputs['samples'].detach().cpu()
         if config.output_noise:
             noises = noises.detach().cpu()

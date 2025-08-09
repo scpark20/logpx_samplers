@@ -5,7 +5,22 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from ...solver import Solver
 
-class GDual_PC_Box_Solver(Solver):
+def lambertw_autograd(x: torch.Tensor, max_iter: int = 10) -> torch.Tensor:
+    """
+    Lambert W 함수의 뉴턴-랩슨 근사 (backprop 지원, GPU 호환)
+    w * exp(w) = x 를 만족하는 w를 찾는다.
+    """
+    # 초기 추정값: log(x+1)  (x> -1/e 구간에서 안정적)
+    w = torch.log1p(x).clamp(min=-10, max=10)  # 폭발 방지
+    for _ in range(max_iter):
+        ew = torch.exp(w)
+        wew = w * ew
+        num = wew - x
+        den = ew * (w + 1) - (w + 2) * num / (2 * w + 2)
+        w = w - num / den
+    return w
+
+class GDual_PC_LogLinear_Solver(Solver):
     def __init__(
         self,
         noise_schedule,
@@ -16,7 +31,8 @@ class GDual_PC_Box_Solver(Solver):
         lower_order_final=True,
         eps=1e-8,
         algorithm_type="dual_prediction",
-        param_dim=()
+        param_dim=(),
+        O2_coeff=False,
     ):
         assert algorithm_type == 'dual_prediction'
         assert order <= 2
@@ -28,6 +44,7 @@ class GDual_PC_Box_Solver(Solver):
         self.flow_shift = flow_shift
         self.lower_order_final = lower_order_final
         self.eps = eps
+        self.O2_coeff = O2_coeff
 
         # for gamma, tau_x, tau_e, kappa_x, kappa_e
         
@@ -35,42 +52,43 @@ class GDual_PC_Box_Solver(Solver):
             init_params = torch.zeros(steps, 2, 5, 1, *param_dim)
         else:
             init_params = torch.zeros(steps, 2, 5)
-        # tau_x, tau_e    
-        init_params[:, :, 1:3] = -8.
         self.params = nn.Parameter(init_params)            
         
     def u(self, alpha, sigma, gamma, tau):
         y_pos = alpha * sigma.pow(-gamma)      # gamma >= 0
         y_neg = alpha.pow(1 + gamma)           # gamma < 0
         y = torch.where(gamma >= 0, y_pos, y_neg)
-        return self.box(y, tau)
+        return self.L(y, tau)
 
     def v(self, alpha, sigma, gamma, tau):
         y_pos = sigma.pow(1 - gamma)           # gamma >= 0
         y_neg = sigma * alpha.pow(gamma)       # gamma < 0
         y = torch.where(gamma >= 0, y_pos, y_neg)
-        return self.box(y, tau)
+        return self.L(y, tau)
 
-    def box(self, y, tau, eps=1e-8):
-        pow_branch = (y.pow(tau) - 1) / (tau + eps)
-        log_branch = torch.log(y)
-        return torch.where(tau > 0, pow_branch, log_branch)
+    def L(self, y, tau, eps=1e-8):
+        return tau*torch.log(y) + (1-tau)*y
 
-    def box_inv(self, y, tau, eps=1e-8):
-        exp_branch = (1 + tau * y).clamp_min(eps).pow(1 / (tau + eps))
-        log_branch = torch.exp(y)
-        return torch.where(tau > 0, exp_branch, log_branch)
-        
-    def O_delta_square(self, delta, kappa):
-       return kappa * delta**2    
-
+    def L_inv(self, x, tau, eps=1e-8):
+        a = 1.0 - tau
+        z = (a / tau) * torch.exp(x / tau)
+        y = (tau / a) * lambertw_autograd(z).real
+        return y.clamp_min(eps)
+    
+    def O_delta_square(self, delta, kappa, tau, L_inv_uc):
+        if self.O2_coeff:
+            coeff = 2/3 * (tau*L_inv_uc) / ((1-tau)*L_inv_uc + tau)**3
+            return coeff * kappa * delta**2
+        else:
+            return kappa * delta**2    
+            
     def compute_delta_and_ratio(self, fn, alphas, sigmas, i, gamma, tau, eps=1e-8):
         c, n, p = i, i + 1, i - 1
         val_c = fn(alphas[c], sigmas[c], gamma, tau)
         val_n = fn(alphas[n], sigmas[n], gamma, tau)
         delta_c = val_n - val_c
-        box_inv_c = self.box_inv(val_c, tau)
-        box_inv_n = self.box_inv(val_n, tau)
+        L_inv_c = self.L_inv(val_c, tau)
+        L_inv_n = self.L_inv(val_n, tau)
 
         if p >= 0:
             val_p = fn(alphas[p], sigmas[p], gamma, tau)
@@ -79,25 +97,24 @@ class GDual_PC_Box_Solver(Solver):
         else:
             ratio = None
         
-        return delta_c, ratio, box_inv_c, box_inv_n
+        return delta_c, ratio, L_inv_c, L_inv_n
 
     def get_next_sample(self, sample, xs, es, i, alphas, sigmas, gamma, tau_x, tau_e, kappa_x, kappa_e, order, eps=1e-8, corrector=False):
         xn, xc, xp = xs
         en, ec, ep = es
-        delta_u, r_u, box_inv_uc, box_inv_un = self.compute_delta_and_ratio(self.u, alphas, sigmas, i, gamma, tau_x, eps)
-        delta_v, r_v, box_inv_vc, box_inv_vn = self.compute_delta_and_ratio(self.v, alphas, sigmas, i, gamma, tau_e, eps)
+        delta_u, r_u, L_inv_uc, L_inv_un = self.compute_delta_and_ratio(self.u, alphas, sigmas, i, gamma, tau_x, eps)
+        delta_v, r_v, L_inv_vc, L_inv_vn = self.compute_delta_and_ratio(self.v, alphas, sigmas, i, gamma, tau_e, eps)
         
-        X = xc * (box_inv_un - box_inv_uc)
-        E = ec * (box_inv_vn - box_inv_vc)
+        X = xc * (L_inv_un - L_inv_uc)
+        E = ec * (L_inv_vn - L_inv_vc)
         
         if order == 2:
             if corrector:
-                X += 0.5 * (xn - xc) * (box_inv_uc**(1-tau_x)*delta_u + self.O_delta_square(delta_u, kappa_x))
-                E += 0.5 * (en - ec) * (box_inv_vc**(1-tau_e)*delta_v + self.O_delta_square(delta_v, kappa_e))
+                X += 0.5 * (xn - xc) * (delta_u/((1-tau_x)+tau_x/L_inv_uc) + self.O_delta_square(delta_u, kappa_x, tau_x, L_inv_uc))
+                E += 0.5 * (en - ec) * (delta_v/((1-tau_e)+tau_e/L_inv_vc) + self.O_delta_square(delta_v, kappa_e, tau_e, L_inv_vc))
             else:
-                X += 0.5 * (xc - xp) / r_u.clamp_min(eps) * (box_inv_uc**(1-tau_x)*delta_u + self.O_delta_square(delta_u, kappa_x))
-                E += 0.5 * (ec - ep) / r_v.clamp_min(eps) * (box_inv_vc**(1-tau_e)*delta_v + self.O_delta_square(delta_v, kappa_e))
-            
+                X += 0.5 * (xc - xp) * (delta_u/((1-tau_x)+tau_x/L_inv_uc) + self.O_delta_square(delta_u, kappa_x, tau_x, L_inv_uc)) / r_u.clamp_min(eps)
+                E += 0.5 * (ec - ep) * (delta_v/((1-tau_e)+tau_e/L_inv_vc) + self.O_delta_square(delta_v, kappa_e, tau_e, L_inv_vc)) / r_v.clamp_min(eps) 
             
         pos_sample_coeff = (sigmas[i + 1] / sigmas[i]) ** gamma
         neg_sample_coeff = (alphas[i + 1] / alphas[i]) ** (-gamma)
@@ -129,17 +146,15 @@ class GDual_PC_Box_Solver(Solver):
 
             # Predictor
             gamma, tau_x, tau_e, kappa_x, kappa_e = self.params[i][0]
-            tau_x, tau_e = torch.exp(tau_x), torch.exp(tau_e)
+            tau_x, tau_e = torch.sigmoid(tau_x), torch.sigmoid(tau_e)
             x_pred = self.get_next_sample(x_corr, (xn, xc, xp), (en, ec, ep), i, alphas, sigmas, gamma, tau_x, tau_e, kappa_x, kappa_e, p, self.eps, corrector=False)
 
             if i < self.steps - 1:
                 xn, en = self.checkpoint_model_fn(x_pred, timesteps[i + 1])
-            else:
-                break
 
             # Corrector
             gamma, tau_x, tau_e, kappa_x, kappa_e = self.params[i][1]
-            tau_x, tau_e = torch.exp(tau_x), torch.exp(tau_e)
+            tau_x, tau_e = torch.sigmoid(tau_x), torch.sigmoid(tau_e)
             x_corr = self.get_next_sample(x_corr, (xn, xc, xp), (en, ec, ep), i, alphas, sigmas, gamma, tau_x, tau_e, kappa_x, kappa_e, 2, self.eps, corrector=True)
 
             xp = xc; ep = ec; xc = xn; ec = en

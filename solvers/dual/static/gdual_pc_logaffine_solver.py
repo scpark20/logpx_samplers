@@ -1,4 +1,3 @@
-from math import tau
 import os
 import torch
 import torch.nn as nn
@@ -6,10 +5,9 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from ...solver import Solver
 
-class GDual_LogAffine_Solver(Solver):
+class GDual_PC_LogAffine_Solver(Solver):
     def __init__(
         self,
-        model_fn,
         noise_schedule,
         steps,
         skip_type="time_uniform_flow",
@@ -18,11 +16,11 @@ class GDual_LogAffine_Solver(Solver):
         lower_order_final=True,
         eps=1e-8,
         algorithm_type="dual_prediction",
-        param_dim=(4, 32, 32)
+        param_dim=()
     ):
         assert algorithm_type == 'dual_prediction'
         assert order <= 2
-        super().__init__(model_fn, noise_schedule, algorithm_type)
+        super().__init__(noise_schedule, algorithm_type)
 
         self.steps = steps
         self.skip_type = skip_type
@@ -32,11 +30,15 @@ class GDual_LogAffine_Solver(Solver):
         self.eps = eps
 
         # for gamma, tau_x, tau_e, kappa_x, kappa_e
+        
         if len(param_dim) > 0:
-            self.params = nn.Parameter(torch.zeros(steps, 5, 1, *param_dim))
+            init_params = torch.zeros(steps, 2, 5, 1, *param_dim)
         else:
-            self.params = nn.Parameter(torch.zeros(steps, 5))
-            
+            init_params = torch.zeros(steps, 2, 5)
+        # tau_x, tau_e    
+        #init_params[:, :, 1:3] = -8.
+        self.params = nn.Parameter(init_params)            
+        
     def u(self, alpha, sigma, gamma, tau):
         y_pos = alpha * sigma.pow(-gamma)      # gamma >= 0
         y_neg = alpha.pow(1 + gamma)           # gamma < 0
@@ -79,16 +81,23 @@ class GDual_LogAffine_Solver(Solver):
         
         return delta_c, ratio, L_inv_c, L_inv_n, val_c
 
-    def get_next_sample(self, sample, xc, xp, ec, ep, i, alphas, sigmas, gamma, tau_x, tau_e, kappa_x, kappa_e, order, eps=1e-8):
+    def get_next_sample(self, sample, xs, es, i, alphas, sigmas, gamma, tau_x, tau_e, kappa_x, kappa_e, order, eps=1e-8, corrector=False):
+        xn, xc, xp = xs
+        en, ec, ep = es
         delta_u, r_u, L_inv_uc, L_inv_un, uc = self.compute_delta_and_ratio(self.u, alphas, sigmas, i, gamma, tau_x, eps)
         delta_v, r_v, L_inv_vc, L_inv_vn, vc = self.compute_delta_and_ratio(self.v, alphas, sigmas, i, gamma, tau_e, eps)
         
         X = xc * (L_inv_un - L_inv_uc)
         E = ec * (L_inv_vn - L_inv_vc)
         
-        if r_u is not None and order == 2:
-            X += 0.5 * (xc - xp) / r_u.clamp_min(eps) * (torch.exp(tau_x*uc)*delta_u + self.O_delta_square(delta_u, kappa_x))
-            E += 0.5 * (ec - ep) / r_v.clamp_min(eps) * (torch.exp(tau_e*vc)*delta_v + self.O_delta_square(delta_v, kappa_e))
+        if order == 2:
+            if corrector:
+                X += 0.5 * (xn - xc) * (torch.exp(tau_x*uc)*delta_u + self.O_delta_square(delta_u, kappa_x))
+                E += 0.5 * (en - ec) * (torch.exp(tau_e*vc)*delta_v + self.O_delta_square(delta_v, kappa_e))
+            else:
+                X += 0.5 * (xc - xp) / r_u.clamp_min(eps) * (torch.exp(tau_x*uc)*delta_u + self.O_delta_square(delta_u, kappa_x))
+                E += 0.5 * (ec - ep) / r_v.clamp_min(eps) * (torch.exp(tau_e*vc)*delta_v + self.O_delta_square(delta_v, kappa_e))
+            
             
         pos_sample_coeff = (sigmas[i + 1] / sigmas[i]) ** gamma
         neg_sample_coeff = (alphas[i + 1] / alphas[i]) ** (-gamma)
@@ -99,7 +108,8 @@ class GDual_LogAffine_Solver(Solver):
 
         return sample_coeff * sample + grad_coeff * (X + E)
 
-    def sample(self, x, **kwargs):
+    def sample(self, x, model_fn, **kwargs):
+        self.set_model_fn(model_fn)
         
         t_0 = 1.0 / self.noise_schedule.total_N
         t_T = self.noise_schedule.T
@@ -109,16 +119,27 @@ class GDual_LogAffine_Solver(Solver):
         alphas = torch.tensor([self.noise_schedule.marginal_alpha(t) for t in timesteps], device=device)
         sigmas = torch.tensor([self.noise_schedule.marginal_std(t) for t in timesteps], device=device)
 
+        x_pred = x
+        x_corr = x
+        xn, en = None, None
         xp, ep = None, None
-        xc, ec = self.checkpoint_model_fn(x, timesteps[0])
+        xc, ec = self.checkpoint_model_fn(x_pred, timesteps[0])
         for i in tqdm(range(self.steps), disable=os.getenv("TQDM", "False")):
             p = min(i+1, self.steps - i, self.order) if self.lower_order_final else min(i+1, self.order)
-            gamma, tau_x, tau_e, kappa_x, kappa_e = self.params[i]
-            
-            x = self.get_next_sample(x, xc, xp, ec, ep, i, alphas, sigmas, gamma, tau_x, tau_e, kappa_x, kappa_e, p, self.eps)
+
+            # Predictor
+            gamma, tau_x, tau_e, kappa_x, kappa_e = self.params[i][0]
+            tau_x, tau_e = torch.exp(tau_x), torch.exp(tau_e)
+            x_pred = self.get_next_sample(x_corr, (xn, xc, xp), (en, ec, ep), i, alphas, sigmas, gamma, tau_x, tau_e, kappa_x, kappa_e, p, self.eps, corrector=False)
 
             if i < self.steps - 1:
-                xp, ep = xc, ec
-                xc, ec = self.checkpoint_model_fn(x, timesteps[i + 1])
-                
-        return x
+                xn, en = self.checkpoint_model_fn(x_pred, timesteps[i + 1])
+
+            # Corrector
+            gamma, tau_x, tau_e, kappa_x, kappa_e = self.params[i][1]
+            tau_x, tau_e = torch.exp(tau_x), torch.exp(tau_e)
+            x_corr = self.get_next_sample(x_corr, (xn, xc, xp), (en, ec, ep), i, alphas, sigmas, gamma, tau_x, tau_e, kappa_x, kappa_e, 2, self.eps, corrector=True)
+
+            xp = xc; ep = ec; xc = xn; ec = en
+            
+        return x_pred

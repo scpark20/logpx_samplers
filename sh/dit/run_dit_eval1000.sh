@@ -2,18 +2,18 @@
 set -e
 
 # 여기서 GPU 번호 수동 지정
-CUDA_VISIBLE_DEVICES=0
+CUDA_VISIBLE_DEVICES=1
 
-TAG=dit_train
+TAG=dit_eval1000
+SAVE_ROOT=samplings/dit/eval1000
 MODEL=DiT
 DATA=ImageNet
-SAVE_ROOT=samplings/dit/train
 BATCH_SIZE=10
 ALGO=data_prediction
 SKIP=time_uniform
 ORDER=1
-N_SAMPLES=10000
-SEED_OFFSET=1
+N_SAMPLES=1000
+SEED_OFFSET=0
 
 SOLVERS=("Euler")
 NFES=(200)
@@ -38,8 +38,7 @@ for solver in "${SOLVERS[@]}"; do
         --n_samples "$N_SAMPLES" \
         --seed_offset "$SEED_OFFSET" \
         --batch_size "$BATCH_SIZE" \
-        --output_noise \
-        --output_traj
+        --output_noise
     done
   done
 done

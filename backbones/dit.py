@@ -55,20 +55,25 @@ class DiT(Backbone):
             samples = self.pipe.numpy_to_pil(samples)
             return samples
 
-    def get_model_fn(
-        self,
-        pos_conds = [0],
-        guidance_scale: float = 4.0,
-        seeds: Union[int, None] = None
-    ) -> Tuple[callable, NoiseScheduleVP, torch.Tensor]:
-        batch_size = len(pos_conds)
+    def get_noise_schedule(self):
+        noise_schedule = NoiseScheduleVP(schedule="discrete", betas=self.pipe.scheduler.betas, dtype=self.dtype)
+        return noise_schedule
+
+    def get_noise(self, *, batch_size=None, seeds=None):
+        assert batch_size is not None or seeds is not None
         if seeds is None:
             seeds = [42 for _ in range(batch_size)]
-        assert len(seeds) == batch_size
+        
+        noises = self.prepare_noise(seeds)
+        return noises
 
-        latents = self.prepare_noise(seeds)
-        noise_schedule = NoiseScheduleVP(schedule="discrete", betas=self.pipe.scheduler.betas, dtype=self.dtype)
-        class_labels = torch.tensor(pos_conds, device=self.device).reshape(-1)
+    def get_model_fn(
+        self,
+        noise_schedule,
+        pos_conds = [0],
+        guidance_scale: float = 4.0,
+    ) -> callable:
+        class_labels = torch.as_tensor(pos_conds, dtype=torch.long, device=self.device).reshape(-1)
         class_null = torch.tensor([1000] * len(pos_conds), device=self.device)
 
         def inner_model_fn(x, t, cond, **kwargs):
@@ -88,4 +93,4 @@ class DiT(Backbone):
                 unconditional_condition=class_null,
                 guidance_scale=guidance_scale,
         )
-        return model_fn, noise_schedule, latents
+        return model_fn
