@@ -1,0 +1,14 @@
+train_dit13 : from train_dit7, logs/exp13, gdual_pc_loglinear_solver (4, 1, 1), time learning
+
+train_dit12 : from train_dit11, logs/exp12, data_coeff2_solver predictor only second, data prediction
+train_dit11 : from train_dit10, logs/exp11, gdual_coeff2_solver predictor only second
+train_dit10 : from train_dit9, logs/exp10, gdual_pc_coeff_solver
+train_dit9 : from train_dit7, logs/exp9, gdual_coeff_solver
+train_dit8 : from train_dit7, logs/exp8, gdual_pc_loglinear_solver, O2 coeff
+train_dit7 : from train_dit6, logs/exp7, gdual_pc_loglinear_solver (4, 1, 1)
+train_dit6 : from train_dit3, logs/exp6, gdual_pc_loglinear_solver
+train_dit5 : from train_dit3, logs/exp5, tau에 ^2, box_solver3
+train_dit4 : from train_dit3, logs/exp4, channel별 없앰, logaffine
+train_dit3 : logs/exp3, channel별 없앰
+train_dit2 : logs/exp2, tau에 exp 없앰
+train_dit : logs/exp1, start

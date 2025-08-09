@@ -158,15 +158,26 @@ class NoiseScheduleVP:
         return log_alphas
 
     def marginal_log_mean_coeff(self, t):
-        """
-        Compute log(alpha_t) of a given continuous-time label t in [0, T].
-        """
         if self.schedule == "discrete":
             return interpolate_fn(
-                t.reshape((-1, 1)), self.t_array.to(t.device), self.log_alpha_array.to(t.device)
+                t.reshape((-1, 1)),
+                self.t_array.to(device=t.device, dtype=t.dtype),      # dtype도 맞춤
+                self.log_alpha_array.to(device=t.device, dtype=t.dtype)
             ).reshape(-1)
         elif self.schedule == "linear":
             return -0.25 * t**2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
+    
+
+    # def marginal_log_mean_coeff(self, t):
+    #     """
+    #     Compute log(alpha_t) of a given continuous-time label t in [0, T].
+    #     """
+    #     if self.schedule == "discrete":
+    #         return interpolate_fn(
+    #             t.reshape((-1, 1)), self.t_array.to(t.device), self.log_alpha_array.to(t.device)
+    #         ).reshape(-1)
+    #     elif self.schedule == "linear":
+    #         return -0.25 * t**2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
 
     def marginal_alpha(self, t):
         """
