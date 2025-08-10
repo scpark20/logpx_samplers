@@ -1,3 +1,7 @@
+train_dit16 : from train_dit15, logs/exp17, (4, 1, 1), time learning, plus O^2 at first order, FFT
+train_dit16 : from train_dit13, logs/exp16, (4, 1, 1), time learning, plus O^2 at first order, # Good
+train_dit15 : from train_dit13, logs/exp15, (4, 1, 1), time learning, no lower
+train_dit14 : from train_dit13, logs/exp14, BNS_Solver
 train_dit13 : from train_dit7, logs/exp13, gdual_pc_loglinear_solver (4, 1, 1), time learning
 
 train_dit12 : from train_dit11, logs/exp12, data_coeff2_solver predictor only second, data prediction
