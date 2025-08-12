@@ -74,9 +74,9 @@ def get_solver(config: EasyDict):
 
 def get_data(config: EasyDict):
     if config.data == 'MSCOCO2017':
-        return np.load('prompts/mscoco2017.npz')['arr_0'].tolist()
+        return np.load('prompts/mscoco2017_val.npz')['arr_0'].tolist()
     if config.data == 'Imagenet':
-        return [i%1000 for i in range(10000)]
+        return [i%1000 for i in range(config.n_samples)]
     raise ValueError(f"Unknown data: {config.data}")
 
 def main():

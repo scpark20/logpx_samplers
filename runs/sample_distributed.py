@@ -13,6 +13,17 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 import torchvision
 from .sample import get_sampling_dir, get_solver, get_data
+from runs.dnnlib.util import open_url
+
+import runs.torch_utils as torch_utils_module
+import runs.torch_utils.persistence as persistence
+import runs.dnnlib as dnnlib_module
+import sys
+sys.modules['torch_utils'] = torch_utils_module
+sys.modules['torch_utils.persistence'] = persistence
+sys.modules['dnnlib'] = dnnlib_module
+
+import pickle
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run sampling")
@@ -75,6 +86,7 @@ def main():
     
     world_size = torch.cuda.device_count()
     print(f"World size: {world_size}")
+
     mp.spawn(sample, nprocs=world_size, args=(world_size, config))
     
 
@@ -93,6 +105,13 @@ def sample(rank, world_size, config):
     start_idx, end_idx = get_data_range(rank, world_size, config.n_samples)
     process_samples = end_idx - start_idx
     n_rounds = math.ceil(process_samples / config.batch_size)
+
+    detector_url = 'https://api.ngc.nvidia.com/v2/models/nvidia/research/stylegan3/versions/1/files/metrics/inception-2015-12-05.pkl'
+    detector_kwargs = dict(return_features=True)
+    feature_dim = 2048
+    with open_url(detector_url) as f:
+        detector_net = pickle.load(f).to(f'cuda:{rank}')
+
 
     print(f"Rank {rank}: processing samples {start_idx}~{end_idx-1} ({process_samples} samples, {n_rounds} rounds)")
     for round in tqdm(range(n_rounds), desc=f"Rank {rank} Sampling"):
@@ -124,20 +143,22 @@ def sample(rank, world_size, config):
         )
 
         if config.result_type == 'all' or config.result_type == 'pixel':
-            samples_pixel = model.decode_vae(samples_latent, output_type='pt')
-            samples_pixel = samples_pixel.data.cpu()
+            samples_pil = model.decode_vae(samples_latent)
+            samples_tensor = torch.stack([torch.from_numpy(np.array(img)) for img in samples_pil]).permute(0, 3, 1, 2).to(f'cuda:{rank}')
+
+            features = detector_net(samples_tensor, **detector_kwargs).to(torch.float64)
         
         samples_latent = samples_latent.data.cpu()
         
         # 저장할 때도 글로벌 인덱스 사용
         for i, global_idx in enumerate(range(global_start, global_end)):
             if config.result_type == 'all':
-                torch.save(samples_latent[i], config.save_dir / f"{global_idx}.pt")
-                torchvision.utils.save_image(samples_pixel[i], config.save_dir / f"{global_idx}.png")
+                torch.save({'latent': samples_latent[i], 'features': features[i]}, config.save_dir / f"{global_idx}.pt")
+                samples_pil[i].save(config.save_dir / f"{global_idx}.png")
             elif config.result_type == 'pixel':
-                torchvision.utils.save_image(samples_pixel[i], config.save_dir / f"{global_idx}.png")
+                samples_pil[i].save(config.save_dir / f"{global_idx}.png")
             elif config.result_type == 'latent':
-                torch.save(samples_latent[i], config.save_dir / f"{global_idx}.pt")
+                torch.save({'latent': samples_latent[i]}, config.save_dir / f"{global_idx}.pt")
             else:
                 raise ValueError(f"Unknown result type: {config.result_type}")
 
