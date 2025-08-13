@@ -9,6 +9,7 @@ import numpy as np
 from easydict import EasyDict
 from pathlib import Path
 from tqdm import tqdm
+from utils.inception import FIDInception
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run sampling")
@@ -27,6 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--batch_size',      type=int,   default=5)
     parser.add_argument('--output_noise',    action='store_true',  default=False)
     parser.add_argument('--output_traj',     action='store_true',  default=False)
+    parser.add_argument('--inception',       action='store_true',  default=False)
     parser.add_argument('--seed_offset',     type=int,   default=0)
     return parser
 
@@ -54,13 +56,13 @@ def get_model(config: EasyDict):
 
 def get_solver(config: EasyDict):
     if config.solver == 'Euler':
-        from solvers.euler_solver import Euler_Solver
+        from solvers.others.euler_solver import Euler_Solver
         return Euler_Solver
     if config.solver == 'DPM-Solver':
-        from solvers.dpm_solver import DPM_Solver
+        from solvers.others.dpm_solver import DPM_Solver
         return DPM_Solver
     if config.solver == 'UniPC':
-        from solvers.unipc_solver import UniPC_Solver
+        from solvers.others.unipc_solver import UniPC_Solver
         return UniPC_Solver    
     raise ValueError(f"Unknown solver: {config.solver}")
 
@@ -94,6 +96,8 @@ def main():
     model  = get_model(config)
     Solver = get_solver(config)
     data   = get_data(config)
+    if config.inception:
+        inception = FIDInception()
 
     n_iters = math.ceil(config.n_samples / config.batch_size)
     for start in tqdm(range(0, config.n_samples, config.batch_size),
@@ -108,20 +112,26 @@ def main():
         solver = Solver(noise_schedule, config.NFE, order=config.order, skip_type=config.skip_type, flow_shift=config.flow_shift, algorithm_type=config.algorithm_type)
 
         outputs = solver.sample(noises, model_fn, output_traj=config.output_traj)
+        if config.inception:
+            raw_outputs = model.decode_vae(outputs['samples'], raw_output=True)
+            inception_features = inception(raw_outputs).detach().cpu()
         samples = outputs['samples'].detach().cpu()
         if config.output_noise:
             noises = noises.detach().cpu()
         if config.output_traj:
-            trajs = outputs['trajs'].detach().cpu()    
-
+            trajs = outputs['trajs'].detach().cpu()
+        
         for index in range(start, end):
             output = {'sample': samples[index-start],
                       'cond': conds[index-start]
                       }
+            if config.inception:
+                output['inception_feature'] = inception_features[index-start]
             if config.output_noise:
                 output['noise'] = noises[index-start]
             if config.output_traj:
                 output['traj'] = trajs[index-start]
+                
             torch.save(output, os.path.join(config.save_dir, f"{index}.pt"))
 
 if __name__ == '__main__':

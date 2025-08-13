@@ -19,8 +19,8 @@
 import os
 import torch
 from tqdm import tqdm
-from .common import interpolate_fn, expand_dims
-from .solver import Solver
+from ..common import interpolate_fn, expand_dims
+from ..solver import Solver
 
 class DPM_Solver(Solver):
     def __init__(

@@ -1,6 +1,7 @@
 import os
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from tqdm import tqdm
 from .common import interpolate_fn, expand_dims
 from torch.utils.checkpoint import checkpoint
@@ -17,6 +18,18 @@ class Solver(nn.Module):
         assert algorithm_type in ["noise_prediction", "data_prediction", "vector_prediction", "dual_prediction"]
         self.algorithm_type = algorithm_type
         self.correcting_x0_fn = None
+
+    # ---------- time steps ----------
+    def learned_timesteps(self, device=None, dtype=None):
+        if device is None: device = self.log_deltas.device
+        if dtype  is None: dtype  = self.log_deltas.dtype
+        T     = torch.as_tensor(self.noise_schedule.T, device=device, dtype=dtype)
+        t_eps = torch.as_tensor(1.0 / self.noise_schedule.total_N, device=device, dtype=dtype)
+        w = F.softmax(self.log_deltas, dim=0)   # (S,)
+        deltas = (T - t_eps) * w
+        c = torch.cumsum(deltas, dim=0)
+        ts = torch.cat([T[None], T - c], dim=0)  # (S+1,)
+        return ts
 
     def set_model_fn(self, model_fn):
         self.model = lambda x, t: model_fn(x, t.expand(x.shape[0]))
@@ -77,6 +90,8 @@ class Solver(nn.Module):
             x0 = (x - sigma_t * noise) / alpha_t
             if self.correcting_x0_fn is not None:
                 x0 = self.correcting_x0_fn(x0, t)
+            if x0.dtype != noise.dtype:
+                noise = noise.to(dtype=x0.dtype)
             return (x0, noise)
         return None
 

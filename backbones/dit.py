@@ -11,7 +11,8 @@ class DiT(Backbone):
         self,
         device: Union[str, torch.device] = 'cuda',
         dtype: torch.dtype = torch.bfloat16,
-        model_id: str = "facebook/DiT-XL-2-256",
+        #model_id: str = "facebook/DiT-XL-2-256",
+        model_id: str = "/data/huggingface/DiT-XL-2-256",
         trainable = False
     ):
         super().__init__(trainable)
@@ -26,6 +27,12 @@ class DiT(Backbone):
         for submod in (self.pipe.vae, self.pipe.transformer):
             submod.to(dtype)
             submod.eval()
+
+    def set_freeze(self):
+        for submod in (self.pipe.vae, self.pipe.transformer):
+            submod.eval()
+            for p in submod.parameters():  # 확실히 freeze
+                p.requires_grad_(False)
 
     def prepare_noise(
         self, seeds: List[int],
@@ -43,6 +50,7 @@ class DiT(Backbone):
     def decode_vae(
         self,
         latents: torch.Tensor,
+        raw_output=False,
     ) -> Union[torch.Tensor, Image.Image]:
         """
         Decode latent tensor to image.
@@ -50,6 +58,9 @@ class DiT(Backbone):
         with self.context:
             lat = (latents / self.pipe.vae.config.scaling_factor).to(self.dtype)
             samples = self.pipe.vae.decode(lat).sample
+            if raw_output:
+                return samples
+                
             samples = (samples / 2 + 0.5).clamp(0, 1)
             samples = samples.cpu().permute(0, 2, 3, 1).float().numpy()
             samples = self.pipe.numpy_to_pil(samples)

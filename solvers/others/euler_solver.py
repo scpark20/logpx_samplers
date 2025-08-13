@@ -1,5 +1,5 @@
 import torch
-from .solver import Solver
+from ..solver import Solver
 
 class Euler_Solver(Solver):
     def __init__(

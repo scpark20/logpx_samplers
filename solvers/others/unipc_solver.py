@@ -2,8 +2,8 @@ import torch
 import torch.nn.functional as F
 import math
 from tqdm import tqdm
-from .common import expand_dims
-from .solver import Solver
+from ..common import expand_dims
+from ..solver import Solver
 import os
 
 class UniPC_Solver(Solver):
