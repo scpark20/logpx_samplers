@@ -214,7 +214,14 @@ class GDual_Solver(Solver):
                     if self.train_mode else self.model_fn(x_pred, timesteps[0]) )
             x_hist.append(xc)
             e_hist.append(ec)
-            params, hidden = self.param_extractor({'x':xc, 'e':ec, 't': timesteps[0:2], 'h': None})
+            params, hidden = self.param_extractor({
+                'x': xc, 'e': ec,
+                't': timesteps[0:2],
+                'log_alpha': log_alpha[0:2],
+                'log_sigma': log_sigma[0:2],
+                'h': None,
+                'step': 0
+            })
 
             use_tqdm = os.getenv("DPM_TQDM", "1") not in ("0","False","false","")
             for i in tqdm(range(self.steps), disable=not use_tqdm):
@@ -232,7 +239,14 @@ class GDual_Solver(Solver):
                     # 다음 스텝 모델값
                     xn, en = ( self.checkpoint_model_fn(x_pred, timesteps[i+1])
                             if self.train_mode else self.model_fn(x_pred, timesteps[i+1]) )
-                    params, hidden = self.param_extractor({'x':xn, 'e':en, 't': timesteps[i+1:i+3], 'h': hidden})
+                    params, hidden = self.param_extractor({
+                            'x': xn, 'e': en,
+                            't': timesteps[i+1:i+3],
+                            'log_alpha': log_alpha[i+1:i+3],
+                            'log_sigma': log_sigma[i+1:i+3],
+                            'h': hidden,
+                            'step': i+1
+                        })
                 else:
                     break
 

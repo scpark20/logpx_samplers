@@ -12,19 +12,27 @@ class Extractor(nn.Module):
             ("flat", nn.Flatten(1)),            # [B,C,1,1] -> [B,C]
             ("proj", nn.Linear(input_shape[0], hidden_dim)),
         ]))
+        self._set_zero(self.feat[-1])
+        
         self.hidden_dim = hidden_dim
         self.time_proj = nn.Linear(2, hidden_dim)
+        self._set_zero(self.time_proj)
+
         self.hidden_proj = nn.Linear(hidden_dim, hidden_dim)
+        self._set_zero(self.hidden_proj)
+
         self.dropout = nn.Dropout(p=dropout)
-        #self.hidden_init = nn.Parameter(torch.randn(1, hidden_dim))
         self.hidden_init = nn.Parameter(torch.zeros(1, hidden_dim))
         self.act = nn.GELU()
 
         self.out_dim = out_dim
         self.out = nn.Linear(hidden_dim, 2*out_dim)
+        self._set_zero(self.out)
+
+    def _set_zero(self, layer):
         with torch.no_grad():
-            self.out.weight.zero_()
-            self.out.bias.zero_()
+            if hasattr(layer, "weight"): layer.weight.zero_()
+            if hasattr(layer, "bias") and layer.bias is not None: layer.bias.zero_()
 
     def forward(self, inputs):
         

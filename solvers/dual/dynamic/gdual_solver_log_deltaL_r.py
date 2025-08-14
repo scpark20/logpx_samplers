@@ -68,10 +68,6 @@ class GDual_Solver(Solver):
         deltay_x = yn_x - yc_x
         deltay_e = yn_e - yc_e
 
-        # Δu
-        delta_ux = self.transform.L(log_yn_x, yn_x, p, side='x') - self.transform.L(log_yc_x, yc_x, p, side='x')
-        delta_ue = self.transform.L(log_yn_e, yn_e, p, side='e') - self.transform.L(log_yc_e, yc_e, p, side='e')
-        
         if order == 1:
             X = xc * deltay_x
             E = ec * deltay_e
@@ -84,16 +80,8 @@ class GDual_Solver(Solver):
                 X = X + 0.5 * (xn - xc) * deltay_x
                 E = E + 0.5 * (en - ec) * deltay_e
             else:
-                log_yp_x = self.transform.log_y(log_alpha[i-1], log_sigma[i-1], p, side='x')
-                log_yp_e = self.transform.log_y(log_alpha[i-1], log_sigma[i-1], p, side='e')
-                yp_x = torch.exp(log_yp_x)
-                yp_e = torch.exp(log_yp_e)
-                delta_ux_p = self.transform.L(log_yc_x, yc_x, p, side='x') - self.transform.L(log_yp_x, yp_x, p, side='x')
-                delta_ue_p = self.transform.L(log_yc_e, yc_e, p, side='e') - self.transform.L(log_yp_e, yp_e, p, side='e')
-                r_u = delta_ux_p / delta_ux
-                r_v = delta_ue_p / delta_ue
-                X = X + 0.5 * (xc - xp)/r_u * deltay_x
-                E = E + 0.5 * (ec - ep)/r_v * deltay_e
+                X = X + 0.5 * (xc - xp)/p['r_x'] * deltay_x
+                E = E + 0.5 * (ec - ep)/p['r_e'] * deltay_e
                 
         sample_coeff, grad_coeff = self.transform.get_sample_grad_coeff(
             i, log_alpha, log_sigma, log_alpha_ratio, log_sigma_ratio, p)

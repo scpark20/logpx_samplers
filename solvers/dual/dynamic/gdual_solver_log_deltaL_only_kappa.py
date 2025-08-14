@@ -20,6 +20,7 @@ class GDual_Solver(Solver):
         eps=1e-2,
         time_learning=True,
         use_corrector=True,
+        kappa=False,
         train_mode=False
     ):
         assert order <= 2
@@ -36,6 +37,7 @@ class GDual_Solver(Solver):
         self.param_extractor = param_extractor
         self.transform = transform
         self.train_mode = train_mode
+        self.kappa = kappa
 
         # learned timesteps (weights over (T - t_eps))
         t_0 = 1.0 / noise_schedule.total_N
@@ -65,16 +67,19 @@ class GDual_Solver(Solver):
         yc_e = torch.exp(log_yc_e)
         yn_e = torch.exp(log_yn_e)
 
-        deltay_x = yn_x - yc_x
-        deltay_e = yn_e - yc_e
-
         # Δu
         delta_ux = self.transform.L(log_yn_x, yn_x, p, side='x') - self.transform.L(log_yc_x, yc_x, p, side='x')
         delta_ue = self.transform.L(log_yn_e, yn_e, p, side='e') - self.transform.L(log_yc_e, yc_e, p, side='e')
+
+        deltay_x = yn_x - yc_x
+        deltay_e = yn_e - yc_e
         
         if order == 1:
-            X = xc * deltay_x
+            X = xc * deltay_x    
             E = ec * deltay_e
+            if self.kappa:
+                X = X + self.transform.O2(delta_ux, p, side='x')
+                E = E + self.transform.O2(delta_ue, p, side='e')
         
         elif order == 2:
             X = xc * deltay_x
@@ -94,6 +99,10 @@ class GDual_Solver(Solver):
                 r_v = delta_ue_p / delta_ue
                 X = X + 0.5 * (xc - xp)/r_u * deltay_x
                 E = E + 0.5 * (ec - ep)/r_v * deltay_e
+
+            if self.kappa:
+                X = X + self.transform.O2(delta_ux, p, side='x')
+                E = E + self.transform.O2(delta_ue, p, side='e')
                 
         sample_coeff, grad_coeff = self.transform.get_sample_grad_coeff(
             i, log_alpha, log_sigma, log_alpha_ratio, log_sigma_ratio, p)

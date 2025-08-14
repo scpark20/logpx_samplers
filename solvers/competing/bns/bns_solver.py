@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
-from ..solver import Solver
+from ...solver import Solver
 
 class BNS_Solver(Solver):
     def __init__(
@@ -12,24 +12,17 @@ class BNS_Solver(Solver):
         steps,
         skip_type="time_uniform_flow",
         flow_shift=1.0,
-        order=2,
-        lower_order_final=True,
-        eps=1e-8,
         algorithm_type="dual_prediction",
         param_dim=(),
         O2_coeff=False,
     ):
         assert algorithm_type == 'dual_prediction'
-        assert order <= 2
         super().__init__(noise_schedule, algorithm_type)
 
         self.steps = steps
         self.skip_type = skip_type
-        self.order = order
         self.flow_shift = flow_shift
-        self.lower_order_final = lower_order_final
-        self.eps = eps
-
+        
         t_0 = 1.0 / noise_schedule.total_N
         t_T = noise_schedule.T
         timesteps = self.get_time_steps(skip_type=skip_type, t_T=t_T, t_0=t_0, N=steps, device='cpu', shift=flow_shift)

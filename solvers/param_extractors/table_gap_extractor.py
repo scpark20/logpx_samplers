@@ -4,8 +4,9 @@ import torch.nn.functional as F
 from collections import OrderedDict
 
 class Extractor(nn.Module):
-    def __init__(self, hidden_dim=128, out_dim=5, input_shape=(4, 32, 32), dropout=0.0):
+    def __init__(self, steps=5, hidden_dim=128, out_dim=5, input_shape=(4, 32, 32), dropout=0.0):
         super().__init__()
+        self.table = nn.Parameter(torch.zeros(steps, 2, out_dim))
         # feature -> hidden
         self.feat = nn.Sequential(OrderedDict([
             ("gap",  nn.AdaptiveAvgPool2d(1)),  # [B,C,H,W] -> [B,C,1,1]
@@ -34,6 +35,9 @@ class Extractor(nn.Module):
         h = self.dropout(h)
         h = self.act(h)
         out = self.out(h)
-        # (B, 2, n_params, C=1, H=1, W=1)
-        out = out.reshape(len(inputs['x']), 2, self.out_dim, 1, 1, 1)
+        out = out.reshape(len(inputs['x']), 2, self.out_dim)
+        scale = torch.exp(out)
+        step = inputs['step']
+        out = self.table[step:step+1, :, :] * scale
+        out = out.reshape(len(out), 2, -1, 1, 1, 1)
         return out, h
