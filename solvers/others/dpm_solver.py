@@ -25,7 +25,6 @@ from ..solver import Solver
 class DPM_Solver(Solver):
     def __init__(
         self,
-        model_fn,
         noise_schedule,
         algorithm_type="data_prediction",
         correcting_x0_fn=None,
@@ -89,7 +88,7 @@ class DPM_Solver(Solver):
             Burcu Karagol Ayan, S Sara Mahdavi, Rapha Gontijo Lopes, et al. Photorealistic text-to-image diffusion models
             with deep language understanding. arXiv preprint arXiv:2205.11487, 2022b.
         """
-        super().__init__(model_fn, noise_schedule, algorithm_type)
+        super().__init__(noise_schedule, algorithm_type)
         # self.model = lambda x, t: model_fn(x, t.expand(x.shape[0]))
         # self.noise_schedule = noise_schedule
         assert algorithm_type in ["noise_prediction", "data_prediction"]
@@ -742,6 +741,7 @@ class DPM_Solver(Solver):
 
     def sample(
         self,
+        model_fn,
         x,
         steps=20,
         t_start=None,
@@ -758,6 +758,7 @@ class DPM_Solver(Solver):
         flow_shift=1.0,
         **kwargs
     ):
+        self.set_model_fn(model_fn)
         """
         Compute the sample at time `t_end` by DPM-Solver, given the initial `x` at time `t_start`.
 
