@@ -20,13 +20,14 @@ import os
 import torch
 from tqdm import tqdm
 from .common import interpolate_fn, expand_dims
+from .solver import Solver
 
-class DPM_Solver:
+class DPM_Solver(Solver):
     def __init__(
         self,
         model_fn,
         noise_schedule,
-        algorithm_type="dpmsolver++",
+        algorithm_type="data_prediction",
         correcting_x0_fn=None,
         correcting_xt_fn=None,
         thresholding_max_val=1.0,
@@ -88,9 +89,10 @@ class DPM_Solver:
             Burcu Karagol Ayan, S Sara Mahdavi, Rapha Gontijo Lopes, et al. Photorealistic text-to-image diffusion models
             with deep language understanding. arXiv preprint arXiv:2205.11487, 2022b.
         """
-        self.model = lambda x, t: model_fn(x, t.expand(x.shape[0]))
-        self.noise_schedule = noise_schedule
-        assert algorithm_type in ["dpmsolver", "dpmsolver++"]
+        super().__init__(model_fn, noise_schedule, algorithm_type)
+        # self.model = lambda x, t: model_fn(x, t.expand(x.shape[0]))
+        # self.noise_schedule = noise_schedule
+        assert algorithm_type in ["noise_prediction", "data_prediction"]
         self.algorithm_type = algorithm_type
         if correcting_x0_fn == "dynamic_thresholding":
             self.correcting_x0_fn = self.dynamic_thresholding_fn
@@ -99,107 +101,6 @@ class DPM_Solver:
         self.correcting_xt_fn = correcting_xt_fn
         self.dynamic_thresholding_ratio = dynamic_thresholding_ratio
         self.thresholding_max_val = thresholding_max_val
-        self.register_progress_bar()
-
-    def register_progress_bar(self, progress_fn=None):
-        """
-        Register a progress bar callback function
-
-        Args:
-            progress_fn: Callback function that takes current step and total steps as parameters
-        """
-        self.progress_fn = progress_fn if progress_fn is not None else lambda step, total: None
-
-    def update_progress(self, step, total_steps):
-        """
-        Update sampling progress
-
-        Args:
-            step: Current step number
-            total_steps: Total number of steps
-        """
-        if hasattr(self, "progress_fn"):
-            try:
-                self.progress_fn(step / total_steps, desc=f"Generating {step}/{total_steps}")
-            except:
-                self.progress_fn(step, total_steps)
-
-        else:
-            # If no progress_fn registered, use default empty function
-            pass
-
-    def dynamic_thresholding_fn(self, x0, t):
-        """
-        The dynamic thresholding method.
-        """
-        dims = x0.dim()
-        p = self.dynamic_thresholding_ratio
-        s = torch.quantile(torch.abs(x0).reshape((x0.shape[0], -1)), p, dim=1)
-        s = expand_dims(torch.maximum(s, self.thresholding_max_val * torch.ones_like(s).to(s.device)), dims)
-        x0 = torch.clamp(x0, -s, s) / s
-        return x0
-
-    def noise_prediction_fn(self, x, t):
-        """
-        Return the noise prediction model.
-        """
-        return self.model(x, t)
-
-    def data_prediction_fn(self, x, t):
-        """
-        Return the data prediction model (with corrector).
-        """
-        noise = self.noise_prediction_fn(x, t)
-        alpha_t, sigma_t = self.noise_schedule.marginal_alpha(t), self.noise_schedule.marginal_std(t)
-        x0 = (x - sigma_t * noise) / alpha_t
-        if self.correcting_x0_fn is not None:
-            x0 = self.correcting_x0_fn(x0, t)
-        return x0
-
-    def model_fn(self, x, t):
-        """
-        Convert the model to the noise prediction model or the data prediction model.
-        """
-        if self.algorithm_type == "dpmsolver++":
-            return self.data_prediction_fn(x, t)
-        else:
-            return self.noise_prediction_fn(x, t)
-
-    def get_time_steps(self, skip_type, t_T, t_0, N, device, shift=1.0):
-        """Compute the intermediate time steps for sampling.
-
-        Args:
-            skip_type: A `str`. The type for the spacing of the time steps. We support three types:
-                - 'logSNR': uniform logSNR for the time steps.
-                - 'time_uniform': uniform time for the time steps. (**Recommended for high-resolutional data**.)
-                - 'time_quadratic': quadratic time for the time steps. (Used in DDIM for low-resolutional data.)
-            t_T: A `float`. The starting time of the sampling (default is T).
-            t_0: A `float`. The ending time of the sampling (default is epsilon).
-            N: A `int`. The total number of the spacing of the time steps.
-            device: A torch device.
-        Returns:
-            A pytorch tensor of the time steps, with the shape (N + 1,).
-        """
-        if skip_type == "logSNR":
-            lambda_T = self.noise_schedule.marginal_lambda(torch.tensor(t_T).to(device))
-            lambda_0 = self.noise_schedule.marginal_lambda(torch.tensor(t_0).to(device))
-            logSNR_steps = torch.linspace(lambda_T.cpu().item(), lambda_0.cpu().item(), N + 1).to(device)
-            return self.noise_schedule.inverse_lambda(logSNR_steps)
-        elif skip_type == "time_uniform":
-            return torch.linspace(t_T, t_0, N + 1).to(device)
-        elif skip_type == "time_quadratic":
-            t_order = 2
-            t = torch.linspace(t_T ** (1.0 / t_order), t_0 ** (1.0 / t_order), N + 1).pow(t_order).to(device)
-            return t
-        elif skip_type == "time_uniform_flow":
-            betas = torch.linspace(t_T, t_0, N + 1).to(device)
-            sigmas = 1.0 - betas
-            sigmas = (shift * sigmas / (1 + (shift - 1) * sigmas)).flip(dims=[0])
-            return sigmas
-        else:
-            raise ValueError(
-                f"Unsupported skip_type {skip_type}, need to be 'logSNR' or 'time_uniform' or 'time_quadratic'"
-            )
 
     def get_orders_and_timesteps_for_singlestep_solver(self, steps, order, skip_type, t_T, t_0, device):
         """
@@ -282,12 +183,6 @@ class DPM_Solver:
             ]
         return timesteps_outer, orders
 
-    def denoise_to_zero_fn(self, x, s):
-        """
-        Denoise at the final step, which is equivalent to solve the ODE from lambda_s to infty by first-order discretization.
-        """
-        return self.data_prediction_fn(x, s)
-
     def dpm_solver_first_update(self, x, s, t, model_s=None, return_intermediate=False):
         """
         DPM-Solver-1 (equivalent to DDIM) from time `s` to time `t`.
@@ -306,15 +201,18 @@ class DPM_Solver:
         dims = x.dim()
         lambda_s, lambda_t = ns.marginal_lambda(s), ns.marginal_lambda(t)
         h = lambda_t - lambda_s
+        
         log_alpha_s, log_alpha_t = ns.marginal_log_mean_coeff(s), ns.marginal_log_mean_coeff(t)
         sigma_s, sigma_t = ns.marginal_std(s), ns.marginal_std(t)
         alpha_t = torch.exp(log_alpha_t)
 
-        if self.algorithm_type == "dpmsolver++":
+        if self.algorithm_type == "data_prediction":
             phi_1 = torch.expm1(-h)
             if model_s is None:
                 model_s = self.model_fn(x, s)
+            
             x_t = sigma_t / sigma_s * x - alpha_t * phi_1 * model_s
+            
             if return_intermediate:
                 return x_t, {"model_s": model_s}
             else:
@@ -365,7 +263,7 @@ class DPM_Solver:
         sigma_s, sigma_s1, sigma_t = ns.marginal_std(s), ns.marginal_std(s1), ns.marginal_std(t)
         alpha_s1, alpha_t = torch.exp(log_alpha_s1), torch.exp(log_alpha_t)
 
-        if self.algorithm_type == "dpmsolver++":
+        if self.algorithm_type == "data_prediction":
             phi_11 = torch.expm1(-r1 * h)
             phi_1 = torch.expm1(-h)
 
@@ -468,7 +366,7 @@ class DPM_Solver:
         )
         alpha_s1, alpha_s2, alpha_t = torch.exp(log_alpha_s1), torch.exp(log_alpha_s2), torch.exp(log_alpha_t)
 
-        if self.algorithm_type == "dpmsolver++":
+        if self.algorithm_type == "data_prediction":
             phi_11 = torch.expm1(-r1 * h)
             phi_12 = torch.expm1(-r2 * h)
             phi_1 = torch.expm1(-h)
@@ -578,7 +476,7 @@ class DPM_Solver:
         h = lambda_t - lambda_prev_0
         r0 = h_0 / h
         D1_0 = (1.0 / r0) * (model_prev_0 - model_prev_1)
-        if self.algorithm_type == "dpmsolver++":
+        if self.algorithm_type == "data_prediction":
             phi_1 = torch.expm1(-h)
             if solver_type == "dpmsolver":
                 x_t = (sigma_t / sigma_prev_0) * x - (alpha_t * phi_1) * model_prev_0 - 0.5 * (alpha_t * phi_1) * D1_0
@@ -639,7 +537,7 @@ class DPM_Solver:
         D1_1 = (1.0 / r1) * (model_prev_1 - model_prev_2)
         D1 = D1_0 + (r0 / (r0 + r1)) * (D1_0 - D1_1)
         D2 = (1.0 / (r0 + r1)) * (D1_0 - D1_1)
-        if self.algorithm_type == "dpmsolver++":
+        if self.algorithm_type == "data_prediction":
             phi_1 = torch.expm1(-h)
             phi_2 = phi_1 / h + 1.0
             phi_3 = phi_2 / h - 0.5
@@ -858,6 +756,7 @@ class DPM_Solver:
         rtol=0.05,
         return_intermediate=False,
         flow_shift=1.0,
+        **kwargs
     ):
         """
         Compute the sample at time `t_end` by DPM-Solver, given the initial `x` at time `t_start`.
@@ -996,6 +895,7 @@ class DPM_Solver:
                 timesteps = self.get_time_steps(
                     skip_type=skip_type, t_T=t_T, t_0=t_0, N=steps, device=device, shift=flow_shift
                 )
+
                 assert timesteps.shape[0] - 1 == steps
                 # Init the initial values.
                 step = 0
@@ -1006,7 +906,7 @@ class DPM_Solver:
                     x = self.correcting_xt_fn(x, t, step)
                 if return_intermediate:
                     intermediates.append(x)
-                self.update_progress(step + 1, len(timesteps))
+                
                 # Init the first `order` values by lower order multistep DPM-Solver.
                 for step in range(1, order):
                     t = timesteps[step]
@@ -1019,10 +919,10 @@ class DPM_Solver:
                         intermediates.append(x)
                     t_prev_list.append(t)
                     model_prev_list.append(self.model_fn(x, t))
-                    # update progress bar
-                    self.update_progress(step + 1, len(timesteps))
+                    
+                    
                 # Compute the remaining values by `order`-th order multistep DPM-Solver.
-                for step in tqdm(range(order, steps + 1), disable=os.getenv("DPM_TQDM", "False") == "True"):
+                for step in tqdm(range(order, steps + 1), disable=os.getenv("TQDM", "False")):
                     t = timesteps[step]
                     # We only use lower order for steps < 10
                     # if lower_order_final and steps < 10:
@@ -1044,8 +944,8 @@ class DPM_Solver:
                     # We do not need to evaluate the final model value.
                     if step < steps:
                         model_prev_list[-1] = self.model_fn(x, t)
-                    # update progress bar
-                    self.update_progress(step + 1, len(timesteps))
+                    
+                    
             elif method in ["singlestep", "singlestep_fixed"]:
                 if method == "singlestep":
                     timesteps_outer, orders = self.get_orders_and_timesteps_for_singlestep_solver(
@@ -1071,7 +971,7 @@ class DPM_Solver:
                         x = self.correcting_xt_fn(x, t, step)
                     if return_intermediate:
                         intermediates.append(x)
-                    self.update_progress(step + 1, len(timesteps_outer))
+                    
             else:
                 raise ValueError(f"Got wrong method {method}")
             if denoise_to_zero:
@@ -1085,4 +985,3 @@ class DPM_Solver:
             return x, intermediates
         else:
             return x
-

@@ -1,0 +1,3 @@
+[submodule "submodules/GMFlow"]
+	path = submodules/GMFlow
+	url = https://github.com/Lakonik/GMFlow

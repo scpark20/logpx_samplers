@@ -1,27 +1,28 @@
-import torch
-import numpy as np
+from abc import ABC, abstractmethod
 from typing import Tuple, Union
+import torch
+from PIL import Image
 
-class Backbone:
+class Backbone(ABC):
     """
-    Base class for diffusion pipelines. Subclasses must implement encode and sample methods.
+    Base class for diffusion pipelines.
+    Subclasses must implement get_model_fn and decode_vae methods.
     """
     def __init__(self):
+        super().__init__()
         self.pipe = None
 
-    def encode(
-        self,
-        positive_text: str,
-        negative_text: str
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    @abstractmethod
+    def get_model_fn(self, *args, **kwargs) -> Tuple[callable, object, torch.Tensor]:
         """
-        Encode prompts into embeddings and attention masks.
+        Prepares and returns the model function for the solver, 
+        the noise schedule, and initial latents.
         """
         raise NotImplementedError
 
-    def sample(self, *args, **kwargs) -> torch.Tensor:
+    @abstractmethod
+    def decode_vae(self, latents: torch.Tensor) -> Union[torch.Tensor, Image.Image]:
         """
-        Run the sampling procedure to generate an image tensor.
+        Decode latent tensor to image.
         """
         raise NotImplementedError
-

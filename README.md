@@ -1,6 +1,6 @@
 # logpx_samplers
 
-Lightweight collection of diffusion model samplers
+Lightweight collection of diffusion model samplers.
 
 ## Overview
 
@@ -12,48 +12,78 @@ This repository is organized around two core components:
 
 ## Backbone
 
-Located in `backbones/`. Each Backbone handles prompt encoding and denoising calls:
+Located in `backbones/`. Each backbone wraps a specific diffusion model (e.g., HuggingFace's pipelines) and exposes a unified interface:
 
-- **backbone.py**  
-  - `Backbone` abstract base class  
-  - Defines `encode()` and `sample()` interfaces, device setup  
-
-- **sana.py**  
-  - `SANA` implementation wrapping HuggingFace’s `SanaPipeline`  
-  - Converts text prompts into latents and runs denoising steps  
+- `Backbone`: abstract base class with `encode()` and `sample()` methods
+- Implementations:
+  - `sana.py`: wraps HuggingFace `SanaPipeline`
+  - `pixart_sigma.py`: wraps PixArt-Sigma
+  - `dit.py`: DiT wrapper
+  - `gmdit.py`: Guided-mask DiT wrapper
 
 ```
 backbones/
-├── backbone.py      # abstract pipeline interface
-└── sana.py          # SanaPipeline wrapper
+├── backbone.py
+├── sana.py
+├── pixart_sigma.py
+├── dit.py
+└── gmdit.py
 ```
 
 ---
 
 ## Solvers
 
-Located in `solvers/`. Each Solver inherits from the `Solver` interface and performs step-wise sampling:
+Located in `solvers/`. Each solver implements a specific numerical algorithm for reverse diffusion.
 
-- **solver.py**  
-  - `Solver` abstract base class  
-  - Defines core methods like `update()` and `step()`
-
-- **common.py**  
-  - Scheduling functions, noise utilities, shared helpers  
-
-- **euler_solver.py**  
-  - Implements classic Euler sampling method  
-
-- **dpm_solver.py**  
-  - Implements DPM-Solver algorithms (higher-order multistep)  
+- `solver.py`: abstract base class
+- `common.py`: shared scheduling & noise helpers
+- `euler_solver.py`: Euler integrator
+- `dpm_solver.py`: DPM-Solver multistep methods
 
 ```
 solvers/
-├── common.py        # schedules & utilities
-├── solver.py        # Solver abstract class
-├── euler_solver.py  # Euler sampler
-└── dpm_solver.py    # DPM-Solver sampler
+├── common.py
+├── solver.py
+├── euler_solver.py
+└── dpm_solver.py
 ```
+
+---
+
+## Example Notebooks
+
+The `examples/` directory contains end-to-end notebooks for each backbone:
+
+```
+examples/
+├── sana.ipynb
+├── pixart_sigma.ipynb
+├── dit.ipynb
+└── gmdit.ipynb
+```
+
+Each notebook demonstrates:
+- Prompt-based image generation
+- Backbone + Solver integration
+- Sampling visualization
+
+---
+
+## Run Scripts
+
+You can also generate samples in batch via:
+
+- `runs/sample.py`: main sampling script
+- `sh/run_sana.sh`: shell script for multi-CFG batch sampling with SANA
+
+Example:
+
+```bash
+bash sh/run_sana.sh
+```
+
+Modify `sh/run_sana.sh` to change solvers, steps, CFG, etc.
 
 ---
 
@@ -64,3 +94,33 @@ git clone https://github.com/yourname/logpx_samplers.git
 cd logpx_samplers
 pip install -r requirements.txt
 ```
+
+---
+
+## Acknowledgements
+
+Built upon HuggingFace `diffusers`, OpenAI `guided-diffusion`, and popular solvers like DPM-Solver and UniPC.
+
+---
+
+## To-Do List
+
+### ✅ Backbones
+- SANA Backbone ✅
+- PixArt-Sigma Backbone ✅
+- DiT Backbone ✅
+- GMDiT Backbone ✅
+
+### ✅ Solvers
+- Euler ✅
+- DPM-Solver ✅
+- UniPC ✅
+- AMED-Solver ❌
+- Diff-Solver ❌
+- GITS ❌
+
+### ✅ Utils
+- Single run ✅
+- DDP run ❌
+- FID evaluation ❌
+- CLIP Score evaluation ❌
