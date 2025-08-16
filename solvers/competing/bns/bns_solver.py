@@ -13,8 +13,6 @@ class BNS_Solver(Solver):
         skip_type="time_uniform_flow",
         flow_shift=1.0,
         algorithm_type="dual_prediction",
-        param_dim=(),
-        O2_coeff=False,
     ):
         assert algorithm_type == 'dual_prediction'
         super().__init__(noise_schedule, algorithm_type)

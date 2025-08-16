@@ -15,19 +15,20 @@ class GDual_Solver(Solver):
         param_extractor,
         skip_type="time_uniform_flow",
         flow_shift=1.0,
-        order=2,
+        pred_order=2,
+        corr_order=2,
         lower_order_final=True,
         eps=1e-2,
         time_learning=True,
         use_corrector=True,
         train_mode=False
     ):
-        assert order <= 2
         super().__init__(noise_schedule, 'dual_prediction')
 
         self.steps = steps
         self.skip_type = skip_type
-        self.order = order
+        self.pred_order = pred_order
+        self.corr_order = corr_order
         self.flow_shift = flow_shift
         self.lower_order_final = lower_order_final
         self.eps = eps
@@ -128,12 +129,12 @@ class GDual_Solver(Solver):
             
             use_tqdm = os.getenv("DPM_TQDM", "1") not in ("0","False","false","")
             for i in tqdm(range(self.steps), disable=not use_tqdm):
-                p_order = min(i + 1, self.steps - i, self.order) if self.lower_order_final else min(i + 1, self.order)
+                pred_order = min(i + 1, self.steps - i, self.pred_order) if self.lower_order_final else min(i + 1, self.pred_order)
 
                 # Predictor
                 x_pred = self.get_next_sample(
                     x_corr, (xn, xc, xp), (en, ec, ep), i,
-                    log_alpha, log_sigma, log_alpha_ratio, log_sigma_ratio, params[:, 0], p_order, corrector=False
+                    log_alpha, log_sigma, log_alpha_ratio, log_sigma_ratio, params[:, 0], pred_order, corrector=False
                 )
                 
                 if i < self.steps - 1:
@@ -143,10 +144,11 @@ class GDual_Solver(Solver):
                     break
 
                 # Corrector
+                corr_order = self.corr_order
                 if self.use_corrector:
                     x_corr = self.get_next_sample(
                         x_corr, (xn, xc, xp), (en, ec, ep), i,
-                        log_alpha, log_sigma, log_alpha_ratio, log_sigma_ratio, params[:, 1], 2, corrector=True
+                        log_alpha, log_sigma, log_alpha_ratio, log_sigma_ratio, params[:, 1], corr_order, corrector=True
                     )
                 else:
                     x_corr = x_pred

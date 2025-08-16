@@ -20,10 +20,23 @@ class Transform:
             return torch.where(gamma >= 0, log_alpha - gamma * log_sigma, (1.0 + gamma) * log_alpha)
         else:    
             return torch.where(gamma >= 0, (1.0 - gamma) * log_sigma, log_sigma + gamma * log_alpha)
+
+    def y(self, alpha, sigma, p, side):
+        gamma = p['gamma']
+        if side == 'x':
+            return torch.where(gamma >= 0, alpha*(sigma**(-gamma)), alpha**(1.0+gamma))
+        else:    
+            return torch.where(gamma >= 0, sigma**(1.0-gamma), sigma*(alpha**gamma))
     
     def O2(self, delta, p, side='x'):
         kappa = p['kappa_x'] if side=='x' else p['kappa_e']
         return kappa * (delta ** 2)
+
+    def get_sample_grad_coeff_(self, i, alpha, sigma, alpha_ratio, sigma_ratio, p):
+        gamma = p['gamma']
+        sample_coeff = torch.where(gamma >= 0, sigma_ratio[i]**gamma,  alpha_ratio[i]**(-gamma))
+        grad_coeff = torch.where(gamma >= 0,  sigma[i+1]**gamma, alpha[i+1]**(-gamma))
+        return sample_coeff, grad_coeff
     
     def get_sample_grad_coeff(self, i, log_alpha, log_sigma, log_alpha_ratio, log_sigma_ratio, p):
         gamma = p['gamma']
