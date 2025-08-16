@@ -1,4 +1,4 @@
-diffusers==0.34.0dev0
+diffusers==0.34.0
 accelerate==1.9.0
 matplotlib==3.10.3
 tensorboard==2.20.0
