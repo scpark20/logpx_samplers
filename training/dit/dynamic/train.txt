@@ -1,0 +1,157 @@
+0816-10 from 0816-4 : RBF-p1c2,1k,lr2e-3
+0816-9 from 0816-7 : RBF-p1c2,gap
+0816-8 from 0816-7 : RBF-p1c3
+0816-7 from 0816-4 : RBF-p1c3 # K에 lambda넣어야 안정
+0816-6 from 0816-4 : RBF-p1c2,1k,lr2e-3,gap
+0816-5 from 0816-3 : RBF-p1c2,1k,lr2e-3,share
+0816-4 from 0816-3 : RBF-p1c2,1k,lr2e-3 # Good
+0816-3 from 0816-1 : RBF-p1c2,1k,lr2e-3
+0816-2 from 0816-1 : Lagrange p1c2
+0816-1 from 0815-8 : Lagrange p1c2
+
+Tensorboard : 0815-08:RBF-p1c2, RBF-2order,pc 두개가 둘다 p1c2임
+
+0815-10 from 0814-20:
+0815-9 from 0815-8 : RBF-3order
+0815-8 from 0814-20 : RBF-2order
+
+0815-7 from 0815-6 : GDual, CLIP Training (Cosine), pred, gap, high quality
+0815-6 from 0815-5 : GDual, CLIP Training (Cosine), pred, table, high quality
+0815-5 from 0815-4 : GDual, CLIP Training (Cosine), pc,gap, high quality
+0815-4 from 0815-2 : GDual, CLIP Training (Cosine), pc,gap
+0815-3 from 0815-2 : BNS, CLIP Training (Cosine)
+0815-2 from 0815-1 : CLIP Training (Cosine)
+0815-1 from 0814-20 : CLIP Training (Contrastive)
+
+0814-108 from 0814-106 : BNS, 1
+0814-106 from 0814-104 : BNS, 10
+0814-104 from 0814-1 :   BNS, 100
+
+0814-107 from 0814-105 : pred_only,table,1
+0814-105 from 0814-102 : pred_only,table,10
+
+0814-110 from 0814-102 : pred_only,gap,100
+0814-109 from 0814-102 : pc,table,100
+0814-102 from 0814-7 :   pred_only,table,100
+
+0814-101 from 0814-100 : pred_only,table
+0814-100 from 0813-7   : pred_only,table
+
+0814-35 from 0814-34 : Copy
+0814-34 from 0814-20 : 2nd-pc-table, r_transform
+
+0814-33 from 0814-30 : Copy
+0814-32 from 0814-20 : 2nd-predictor-amed
+
+0814-31 from 0814-30 : Copy
+0814-30 from 0814-20 : 2nd-predictor-gap, 1st kappa
+
+0814-29 from 0814-28 : Copy
+0814-28 from 0814-20 : 2nd-predictor-table, 1st kappa
+
+0814-27 from 0814-26 : Copy
+0814-26 from 0814-20 : 2nd-pc-table
+
+0814-25 from 0814-24 : Copy
+0814-24 from 0814-20 : 2nd-ponly-table, kappa
+
+0814-23 from 0814-22 : Same
+0814-22 from 0814-20 : 2nd-ponly-table, not lower
+
+0814-21 from 0814-20 : copy # Good
+0814-20 from 0813-7 : 2nd-ponly-table # Good
+
+0814-19 from 0813-16 : Same
+0814-18 from 0813-16 : predictor_only, order2, table, EMA Training
+
+0814-17 from 0813-16 : Same
+0814-16 from 0813-14 : predictor_only, order2, zero rnn hidden, EMA Training
+
+0814-15 from 0813-14 : Same
+0814-14 from 0813-13 : order3, zero rnn hidden, EMA Training
+0814-13 from 0813-11 : Same
+0814-12 from 0814-11 : EMA
+0814-11 from 0813-7 : order2, zero_init
+0814-10 from 0814-9 : GDual temporal_gap_extractor, x, time, 1out layers
+0814-9 from 0814-8 : GDual temporal_gap_extractor, x, time, 2out layers
+0814-9 from 0814-8 : GDual temporal_gap_extractor, x, dlog rho
+0814-8 from 0814-4 : GDual temporal_gap_extractor, x, log rho
+0814-7 from 0814-5 : GDual temporal_gap_extractor, x, time
+0814-6 from 0814-4 : GDual temporal_gap_extractor, alpha only # 안좋음
+0814-5 from 0814-4 : GDual temporal_gap_extractor, x only # 안좋음
+0814-4 from 0813-7 : GDual temporal_gap_extractor, x and alpha
+0814-3 from 0813-7 : GDual w/o extractor
+0814-2 from 0814-1 : BNS start : mse loss
+0814-1 from 0813-7 : BNS start : inception loss
+
+0813-8 from 0813-5 : predictor only
+0813-7 from 0813-5 : third order # Good
+0813-6 from 0813-5 : Same
+0813-5 from 0813-1 : fixed learning rate 10epoch
+0813-4 from 0813-1 : Same
+0813-3 from 0813-1 :  deltaL1:False,deltaL2:True, kappa_disable=True
+0813-2 from 0813-1 :  deltaL1:True,deltaL2:False, kappa_disable=True
+0813-1 from 0812-10 : deltaL1:True,deltaL2:True # Good
+
+0812-13 - from 0812-10 : train by inception loss, predictor only
+0812-12 - from 0812-10 : train by inception loss, exact_first=True, kappa_disable=False
+0812-11 - from 0812-10 : train by inception loss, exact_first=False, kappa_disable=True
+0812-10 - from 0812-9 : train by inception loss, exact_first=True, kappa_disable=True # Good
+0812-9 - from 0812-2 : show inception loss
+
+0812-5: log-box-blend # Good
+0812-4 - from 0812-3 : poly2
+0812-3 - from 0812-1 : poly
+0812-2 - from 0811-17 : noclamp, gamma pushaway, gamma, kappa max=3, logMSE, General #Good
+0812-1 - from 0811-17 : noclamp, gamma pushaway, gamma, kappa max=3, logMSE
+
+0811-19 - from 0811-18 : noclamp, gamma pushaway, gamma, kappa max=2
+0811-18 - from 0811-17 : noclamp, gamma pushaway, gamma, kappa max=3
+0811-17 - from 0811-16 : noclamp, gamma pushaway
+
+Exp : Safe
+0811-16 - from 0811-13 : Same
+0811-15 - from 0811-09 : soft clamping, no gamma pushaway
+
+Exp : OneCycleLR
+0811-12 - from 0811-11 : Same
+0811-11 - from 0811-09 : gdual_solver, loglinear trasnsform, GAP extractor, exact first=False, OneCycleLR
+
+Exp : Cosine Scheduling
+0811-14 - from 0811-09 : Same, paramclamp2 
+0811-13 - from 0811-09 : Same, paramclamp2
+0811-10 - from 0811-09 : Same
+0811-09 - from 0811-03 : gdual_solver, loglinear trasnsform, GAP extractor, exact first=False, Scheduling
+
+0811-08 - from 0811-07 : gdual_solver, logpower_loglinear_transform, gap_extractor, exact first=False
+0811-07 - from 0811-05 : gdual_solver, tempered_loglinear_transform, gap_extractor, exact first=False
+0811-06 - from 0811-05 : Same
+0811-05 - from 0811-03 : gdual_solver, scaled_loglinear_transform, gap_extractor, exact first=False
+0811-04 - from 0811-03 : Same
+0811-03 - from 0811-02 : gdual_solver, loglinear trasnsform, GAP extractor, exact first=False
+0811-02 - from 0811-01 : gdual_solver, linearlog trasnsform, GAP extractor, exact first=False
+0811-01 - from 0810-12 : gdual_solver, linearlog trasnsform, GAP extractor
+
+0810-22 - from 0810-7 : gdual_dynamic_std_rnn_time_pc_loglinear_solver, CFG=4.0
+0810-21 - from 0810-7 : gdual_dynamic_gap128_rnn_time_pc_loglinear_solver, CFG=4.0
+0810-19 - from 0810-17 : gdual_dynamic_gap4_rnn_time_pc_loglinear_solver, CFG=4.0
+0810-18 - from 0810-17 : gdual_dynamic_conv_gru_time_pc_loglinear_solver, CFG=4.0
+0810-17 - from 0810-16 : gdual_dynamic_gap_rnn_time_pc_loglinear_solver, CFG=4.0
+0810-16 - from 0810-7 : gdual_dynamic_gap_rnn_time_pc_loglinear_solver, CFG=4.0
+0810-15 -from 0810-14 : gdual_dynamic_pool_rnn_time_pc_loglinear_solver, CFG=4.0, hidden=32
+0810-14 -from 0810-13 : gdual_dynamic_pool_rnn_time_pc_loglinear_solver, CFG=4.0, hidden=16
+0810-13 -from 0810-10 : gdual_dynamic_pool_rnn_time_pc_loglinear_solver, CFG=4.0, hidden=4
+
+0810-12 -from 0810-7 : gdual_dynamic_rnn_time_pc_loglinear_solver Retry, CFG=4.0 # Good
+0810-11 -from 0810-3 : gdual_dynamic_pool_rnn_time_pc_loglinear_solver  CFG=1.375
+0810-10 -from 0810-7 : gdual_dynamic_pool_rnn_time_pc_loglinear_solver, CFG=4.0
+
+0810-9 - from 0810-7 : gdual_dynamic_rnncell_time_pc_loglinear_solver_efficient, CFG=4.0
+0810-8 - from 0810-7 : gdual_dynamic_lstm_time_pc_loglinear_solver, CFG=4.0
+0810-7 - from 0810-3 : gdual_dynamic_rnn_time_pc_loglinear_solver, CFG=4.0 # Good
+0810-6 - from 0810-3 : gdual_dynamic_rnn_time_pc_loglinear_first_solver : order=1 근사 안하고 정확히
+0810-5 - from 0810-3 : gdual_dynamic_rnn_time_pc_box_solver
+0810-4 - from 0810-3 : gdual_dynamic_double_rnn_time_pc_loglinear_solver
+0810-3 - from 0810-2 : gdual_dynamic_rnn_time_pc_loglinear_solver # Good
+0810-2 - from 0810-1 : gdual_dynamic_time_pc_loglinear_solver
+0810-1 - from static/train_dit16.ipynb : gdual_dynamic_time_pc_box_solver
