@@ -1,11 +1,17 @@
+0816-15 from 0816-14 : RBF-p1c2,1k,lr2e-3,share
+0816-14 from 0816-12 : RBF-p1c2,1k,lr2e-3,share
+
+0816-13 from 0816-12 : RBF-p1c2,1k,lr2e-3
+0816-12 from 0816-3 : RBF-p1c2,1k,lr2e-3
+
 0816-10 from 0816-4 : RBF-p1c2,1k,lr2e-3
 0816-9 from 0816-7 : RBF-p1c2,gap
 0816-8 from 0816-7 : RBF-p1c3
 0816-7 from 0816-4 : RBF-p1c3 # K에 lambda넣어야 안정
 0816-6 from 0816-4 : RBF-p1c2,1k,lr2e-3,gap
 0816-5 from 0816-3 : RBF-p1c2,1k,lr2e-3,share
-0816-4 from 0816-3 : RBF-p1c2,1k,lr2e-3 # Good
-0816-3 from 0816-1 : RBF-p1c2,1k,lr2e-3
+0816-4 from 0816-3 : RBF-p1c2,1k,lr2e-3
+0816-3 from 0816-1 : RBF-p1c2,1k,lr2e-3 # Good
 0816-2 from 0816-1 : Lagrange p1c2
 0816-1 from 0815-8 : Lagrange p1c2
 

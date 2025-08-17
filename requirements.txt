@@ -3,3 +3,4 @@ accelerate==1.9.0
 matplotlib==3.10.3
 tensorboard==2.20.0
 pytorch_fid==0.3.0
+timm==1.0.19

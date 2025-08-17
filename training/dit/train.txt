@@ -1,18 +1,12 @@
-train_dit16 : from train_dit15, logs/exp17, (4, 1, 1), time learning, plus O^2 at first order, FFT
-train_dit16 : from train_dit13, logs/exp16, (4, 1, 1), time learning, plus O^2 at first order, # Good
-train_dit15 : from train_dit13, logs/exp15, (4, 1, 1), time learning, no lower
-train_dit14 : from train_dit13, logs/exp14, BNS_Solver
-train_dit13 : from train_dit7, logs/exp13, gdual_pc_loglinear_solver (4, 1, 1), time learning
+0817-10 from 0817-4: scale learning
+0817-9 from 0817-8: RBF, log-affine semipositive, 4ch
+0817-8 from 0817-4: RBF, log-affine semipositive, 4ch
+0817-7 from 0817-5: RBF,semipos,vit-H
+0817-6 from 0817-5: RBF,semipos,vit
+0817-5 from 0817-1: RBF,semipos,classifier
+0817-4 from 0817-3: RBF, log-affine semipositive # Very Good
+0817-3 from 0816-3: log-affine semipositive
 
-train_dit12 : from train_dit11, logs/exp12, data_coeff2_solver predictor only second, data prediction
-train_dit11 : from train_dit10, logs/exp11, gdual_coeff2_solver predictor only second
-train_dit10 : from train_dit9, logs/exp10, gdual_pc_coeff_solver
-train_dit9 : from train_dit7, logs/exp9, gdual_coeff_solver
-train_dit8 : from train_dit7, logs/exp8, gdual_pc_loglinear_solver, O2 coeff
-train_dit7 : from train_dit6, logs/exp7, gdual_pc_loglinear_solver (4, 1, 1)
-train_dit6 : from train_dit3, logs/exp6, gdual_pc_loglinear_solver
-train_dit5 : from train_dit3, logs/exp5, tau에 ^2, box_solver3
-train_dit4 : from train_dit3, logs/exp4, channel별 없앰, logaffine
-train_dit3 : logs/exp3, channel별 없앰
-train_dit2 : logs/exp2, tau에 exp 없앰
-train_dit : logs/exp1, start
+# Classifier Train
+0817-2 from 0817-1: BNS classifier train
+0817-1 from 0816-3: RBF classifier train

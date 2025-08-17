@@ -19,9 +19,10 @@ class GDual_Solver(Solver):
         corr_order=2, # 제대로 만듬
         lower_order_final=True,
         eps=1e-2,
+        scale_learning=False,
         time_learning=True,
         use_corrector=True,
-        train_mode=False
+        train_mode=False,
     ):
         super().__init__(noise_schedule, 'dual_prediction')
 
@@ -32,6 +33,7 @@ class GDual_Solver(Solver):
         self.flow_shift = flow_shift
         self.lower_order_final = lower_order_final
         self.eps = eps
+        self.scale_learning = scale_learning
         self.time_learning = time_learning
         self.use_corrector = use_corrector
         self.param_extractor = param_extractor
@@ -43,6 +45,8 @@ class GDual_Solver(Solver):
         t_T = noise_schedule.T
         timesteps = self.get_time_steps(skip_type=skip_type, t_T=t_T, t_0=t_0, N=steps, device='cpu', shift=flow_shift)
         self.log_deltas = nn.Parameter(torch.log(timesteps[:-1] - timesteps[1:]))
+        if self.scale_learning:
+            self.scale = nn.Parameter(torch.ones(1,))
 
     def get_next_sample(self, i, sample, xs, es, alphas, sigmas, alphas_ratio, sigmas_ratio, params, order, corrector=False):
         # corrector는 order+1임
@@ -103,6 +107,8 @@ class GDual_Solver(Solver):
         sigmas_ratio = sigmas[1:]/sigmas[:-1]
         
         # 초기 상태
+        if self.scale_learning:
+            xt = xt * self.scale
         x_pred = x_corr = xt
         xs = []
         es = []
