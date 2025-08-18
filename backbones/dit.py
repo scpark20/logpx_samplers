@@ -11,8 +11,8 @@ class DiT(Backbone):
         self,
         device: Union[str, torch.device] = 'cuda',
         dtype: torch.dtype = torch.bfloat16,
-        #model_id: str = "facebook/DiT-XL-2-256",
-        model_id: str = "/data/huggingface/DiT-XL-2-256",
+        model_id: str = "facebook/DiT-XL-2-256",
+        #model_id: str = "/data/huggingface/DiT-XL-2-256",
         trainable = False
     ):
         super().__init__(trainable)

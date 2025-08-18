@@ -71,7 +71,7 @@ class GDual_Solver(Solver):
         # corr : (B, order), [[u_i+1, u_i, u_i-1, ..., u_i-order+2], ...]
         ux = self.transform.L(yx, p, side='x')
         ue = self.transform.L(ye, p, side='e')
-
+        
         # (B, order)
         coeffs_x = self.transform.get_coefficients(ux[:, 1], ux[:, 0], ux if corrector else ux[:, 1:], p, side='x')
         coeffs_e = self.transform.get_coefficients(ue[:, 1], ue[:, 0], ue if corrector else ue[:, 1:], p, side='e')
@@ -136,6 +136,7 @@ class GDual_Solver(Solver):
                 
                 # Corrector
                 order = min(self.corr_order, len(xs))
+                assert order >= 2
                 if self.use_corrector:
                     x_corr = self.get_next_sample(i, x_corr, xs, es, alphas, sigmas, alphas_ratio, sigmas_ratio,
                     params[:, 1], order, corrector=True)
