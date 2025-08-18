@@ -11,7 +11,8 @@ class SANA(Backbone):
         self,
         device: Union[str, torch.device] = 'cuda',
         dtype: torch.dtype = torch.bfloat16,
-        model_id: str = 'Efficient-Large-Model/SANA1.5_1.6B_1024px_diffusers',
+        model_id='Efficient-Large-Model/Sana_600M_1024px_diffusers',
+        #model_id: str = 'Efficient-Large-Model/SANA1.5_1.6B_1024px_diffusers',
         trainable = False
     ):
         super().__init__(trainable)
@@ -27,6 +28,12 @@ class SANA(Backbone):
             submod.to(dtype)
             submod.eval()
 
+    def set_freeze(self):
+        for submod in (self.pipe.vae, self.pipe.transformer):
+            submod.eval()
+            for p in submod.parameters():  # 확실히 freeze
+                p.requires_grad_(False)
+
     def prepare_noise(
         self, seeds: List[int],
     ) -> torch.Tensor:
@@ -40,7 +47,6 @@ class SANA(Backbone):
             noise = np.stack([np.random.RandomState(s).randn(*shape) for s in seeds], axis=0)
             return torch.from_numpy(noise).to(self.device).to(torch.float32)
 
-    @torch.inference_mode()
     def encode(
         self, pos_texts: List[str], neg_texts: Optional[List[str]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -59,10 +65,10 @@ class SANA(Backbone):
         )
         return embeds, attn_mask, neg_embeds, neg_mask
 
-    @torch.inference_mode()
     def decode_vae(
         self,
         latents: torch.Tensor,
+        raw_output=False,
         output_type: str = 'pil'
     ) -> Union[torch.Tensor, Image.Image]:
         """
@@ -72,24 +78,32 @@ class SANA(Backbone):
         with self.context:
             lat = (latents / self.pipe.vae.config.scaling_factor).to(self.dtype)
             img_tensor = self.pipe.vae.decode(lat, return_dict=False)[0]
-            return self.pipe.image_processor.postprocess(img_tensor, output_type=output_type)
+            if raw_output:
+                return img_tensor
+            else:
+                return self.pipe.image_processor.postprocess(img_tensor, output_type=output_type)
+
+    def get_noise_schedule(self):
+        noise_schedule = NoiseScheduleFlow(schedule="discrete")
+        return noise_schedule
+
+    def get_noise(self, *, batch_size=None, seeds=None):
+        assert batch_size is not None or seeds is not None
+        if seeds is None:
+            seeds = [42 for _ in range(batch_size)]
+        
+        noises = self.prepare_noise(seeds)
+        return noises
 
     def get_model_fn(
         self,
+        noise_schedule,
         pos_conds: List[str],
         neg_conds: Optional[List[str]] = None,
         guidance_scale: float = 4.5,
-        seeds: Optional[List[int]] = None,
     ) -> Tuple[callable, NoiseScheduleFlow, torch.Tensor]:
-        batch_size = len(pos_conds)
-        if seeds is None:
-            seeds = [42 for _ in range(batch_size)]
-        assert len(seeds) == batch_size
-
         embeds, attn_mask, neg_embeds, neg_mask = self.encode(pos_conds, neg_conds)
-        latents = self.prepare_noise(seeds)
-        noise_schedule = NoiseScheduleFlow(schedule="discrete_flow")
-
+        
         def inner_model_fn(x, t, cond, **kwargs):
             with self.context:
                 x = x.to(kwargs['dtype'])
@@ -107,4 +121,4 @@ class SANA(Backbone):
                 unconditional_condition=neg_embeds,
                 guidance_scale=guidance_scale,
         )
-        return model_fn, noise_schedule, latents
+        return model_fn

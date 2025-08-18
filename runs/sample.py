@@ -10,6 +10,7 @@ from easydict import EasyDict
 from pathlib import Path
 from tqdm import tqdm
 from utils.inception import FIDInception
+from utils.clip import CLIPEmbedder
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run sampling")
@@ -18,7 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--solver',          type=str,   default='DPM-Solver')
     parser.add_argument('--algorithm_type',  type=str,   default='data_prediction')
     parser.add_argument('--skip_type',       type=str,   default='time_uniform')
-    parser.add_argument('--flow_shift',      type=float, default=1.0)
+    parser.add_argument('--flow_shift',      type=float, default=3.0)
     parser.add_argument('--NFE',             type=int,   default=10)
     parser.add_argument('--CFG',             type=float, default=4.5)
     parser.add_argument('--order',           type=int,   default=2)
@@ -29,6 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--output_noise',    action='store_true',  default=False)
     parser.add_argument('--output_traj',     action='store_true',  default=False)
     parser.add_argument('--inception',       action='store_true',  default=False)
+    parser.add_argument('--clip',            action='store_true',  default=False)
     parser.add_argument('--seed_offset',     type=int,   default=0)
     return parser
 
@@ -98,6 +100,8 @@ def main():
     data   = get_data(config)
     if config.inception:
         inception = FIDInception()
+    if config.clip:
+        clip = CLIPEmbedder(device=model.device)
 
     n_iters = math.ceil(config.n_samples / config.batch_size)
     for start in tqdm(range(0, config.n_samples, config.batch_size),
@@ -111,15 +115,20 @@ def main():
         noises = model.get_noise(seeds=seeds)
         solver = Solver(noise_schedule, config.NFE, order=config.order, skip_type=config.skip_type, flow_shift=config.flow_shift, algorithm_type=config.algorithm_type)
 
-        outputs = solver.sample(noises, model_fn, output_traj=config.output_traj)
-        if config.inception:
-            raw_outputs = model.decode_vae(outputs['samples'], raw_output=True)
-            inception_features = inception(raw_outputs).detach().cpu()
-        samples = outputs['samples'].detach().cpu()
-        if config.output_noise:
-            noises = noises.detach().cpu()
-        if config.output_traj:
-            trajs = outputs['trajs'].detach().cpu()
+        with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+            with torch.no_grad():
+                outputs = solver.sample(noises, model_fn, output_traj=config.output_traj)
+                if config.inception or config.clip:
+                    raw_outputs = model.decode_vae(outputs['samples'], raw_output=True)
+                    if config.inception:
+                        inception_features = inception(raw_outputs).detach().cpu()
+                    if config.clip:
+                        clip_features = clip.encode_image(raw_outputs).detach().cpu()
+                samples = outputs['samples'].detach().cpu()
+                if config.output_noise:
+                    noises = noises.detach().cpu()
+                if config.output_traj:
+                    trajs = outputs['trajs'].detach().cpu()
         
         for index in range(start, end):
             output = {'sample': samples[index-start],
@@ -127,6 +136,8 @@ def main():
                       }
             if config.inception:
                 output['inception_feature'] = inception_features[index-start]
+            if config.clip:
+                output['clip_feature'] = clip_features[index-start]
             if config.output_noise:
                 output['noise'] = noises[index-start]
             if config.output_traj:
