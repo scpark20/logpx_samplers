@@ -69,15 +69,15 @@ class GDual_Solver(Solver):
         log_yn_x = self.transform.log_y(log_alpha[i+1], log_sigma[i+1], p, side='x')
         log_yc_e = self.transform.log_y(log_alpha[i],   log_sigma[i],   p, side='e')
         log_yn_e = self.transform.log_y(log_alpha[i+1], log_sigma[i+1], p, side='e')
-
+        
         yc_x = torch.exp(log_yc_x)
         yn_x = torch.exp(log_yn_x)
         yc_e = torch.exp(log_yc_e)
         yn_e = torch.exp(log_yn_e)
-
+        
         deltay_x = yn_x - yc_x
         deltay_e = yn_e - yc_e
-
+        
         # Δu
         delta_ux = self.transform.L(log_yn_x, yn_x, p, side='x') - self.transform.L(log_yc_x, yc_x, p, side='x')
         delta_ue = self.transform.L(log_yn_e, yn_e, p, side='e') - self.transform.L(log_yc_e, yc_e, p, side='e')
@@ -87,18 +87,18 @@ class GDual_Solver(Solver):
             if self.order1_kappa:
                 coeff_X = coeff_X + self.transform.O2(delta_ux, p, side='x')
                 coeff_E = coeff_E + self.transform.O2(delta_ue, p, side='e')
-            X = xc * coeff_X; E = ec * coeff_E
+            X = xc * coeff_X[:, None, None, None]; E = ec * coeff_E[:, None, None, None]
             
         elif order == 2:
-            X = xc * deltay_x; E = ec * deltay_e
+            X = xc * deltay_x[:, None, None, None]; E = ec * deltay_e[:, None, None, None]
             coeff_X = deltay_x; coeff_E = deltay_e
             if self.order2_kappa:
                 coeff_X = coeff_X + self.transform.O2(delta_ux, p, side='x')
                 coeff_E = coeff_E + self.transform.O2(delta_ue, p, side='e')
 
             if corrector:
-                X = X + 0.5 * (xn - xc) * coeff_X
-                E = E + 0.5 * (en - ec) * coeff_E
+                X = X + 0.5 * (xn - xc) * coeff_X[:, None, None, None]
+                E = E + 0.5 * (en - ec) * coeff_E[:, None, None, None]
             else:
                 log_yp_x = self.transform.log_y(log_alpha[i-1], log_sigma[i-1], p, side='x')
                 log_yp_e = self.transform.log_y(log_alpha[i-1], log_sigma[i-1], p, side='e')
@@ -106,12 +106,12 @@ class GDual_Solver(Solver):
                 delta_ux_p = self.transform.L(log_yc_x, yc_x, p, side='x') - self.transform.L(log_yp_x, yp_x, p, side='x')
                 delta_ue_p = self.transform.L(log_yc_e, yc_e, p, side='e') - self.transform.L(log_yp_e, yp_e, p, side='e')
                 r_u = delta_ux_p / delta_ux; r_v = delta_ue_p / delta_ue
-                X = X + 0.5 * (xc - xp)/r_u * coeff_X
-                E = E + 0.5 * (ec - ep)/r_v * coeff_E
+                X = X + 0.5 * (xc - xp)/r_u * coeff_X[:, None, None, None]
+                E = E + 0.5 * (ec - ep)/r_v * coeff_E[:, None, None, None]
                 
         sample_coeff, grad_coeff = self.transform.get_sample_grad_coeff(
             i, log_alpha, log_sigma, log_alpha_ratio, log_sigma_ratio, p)
-        out = sample_coeff * sample + grad_coeff * (X + E)
+        out = sample_coeff[:, None, None, None] * sample + grad_coeff[:, None, None, None] * (X + E)
         return out
 
     # ---------- sampling ----------

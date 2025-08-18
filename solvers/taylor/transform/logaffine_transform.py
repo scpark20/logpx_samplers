@@ -48,7 +48,7 @@ class LogAffineTransform(Transform):
         'kappa_x': k_x, 'kappa_e': k_e}
 
     def L(self, log_y, y, p, side='x'):
-        tau = (p['tau_x'] if side=='x' else p['tau_e'])[:, None]
+        tau = (p['tau_x'] if side=='x' else p['tau_e'])
         u_lin    = y
         u_nonlin = torch.log1p(tau * y) / tau   # τ>0에서 안정
         return torch.where(tau.abs() < self.tau_tol, u_lin, u_nonlin)

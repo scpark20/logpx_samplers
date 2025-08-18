@@ -10,6 +10,6 @@ class Extractor(nn.Module):
 
     def forward(self, inputs):
         step = inputs['step']
-        # (1, 2, out_dim, n_channels)
+        # (1, 2, out_dim)
         out = self.table[step:step+1]
         return out, None
