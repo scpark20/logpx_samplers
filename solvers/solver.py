@@ -19,17 +19,36 @@ class Solver(nn.Module):
         self.algorithm_type = algorithm_type
         self.correcting_x0_fn = None
 
-    # ---------- time steps ----------
+    # # ---------- time steps ----------
+    # def learned_timesteps(self, device=None, dtype=None):
+    #     if device is None: device = self.log_deltas.device
+    #     if dtype  is None: dtype  = self.log_deltas.dtype
+    #     T     = torch.as_tensor(self.noise_schedule.T, device=device, dtype=dtype)
+    #     t_eps = torch.as_tensor(1.0 / self.noise_schedule.total_N, device=device, dtype=dtype)
+    #     w = F.softmax(self.log_deltas, dim=0)   # (S,)
+    #     deltas = (T - t_eps) * w
+    #     c = torch.cumsum(deltas, dim=0)
+    #     ts = torch.cat([T[None], T - c], dim=0)  # (S+1,)
+    #     return ts
+
     def learned_timesteps(self, device=None, dtype=None):
         if device is None: device = self.log_deltas.device
         if dtype  is None: dtype  = self.log_deltas.dtype
-        T     = torch.as_tensor(self.noise_schedule.T, device=device, dtype=dtype)
-        t_eps = torch.as_tensor(1.0 / self.noise_schedule.total_N, device=device, dtype=dtype)
-        w = F.softmax(self.log_deltas, dim=0)   # (S,)
-        deltas = (T - t_eps) * w
-        c = torch.cumsum(deltas, dim=0)
-        ts = torch.cat([T[None], T - c], dim=0)  # (S+1,)
+
+        T = torch.as_tensor(self.noise_schedule.T, device=device, dtype=dtype)
+
+        # 경계 회피: [t_lo, t_hi] = [T/N, T*(1-1/N)]
+        frac = torch.as_tensor(1.0 / self.noise_schedule.total_N, device=device, dtype=dtype)
+        t_lo = T * frac
+        t_hi = T * (1.0 - frac)
+
+        # 학습된 분할: softmax(log_deltas)로 [t_lo, t_hi]를 분할 (내림차순)
+        w = F.softmax(self.log_deltas, dim=0)          # (S,)
+        deltas = (t_hi - t_lo) * w                     # 합 = t_hi - t_lo
+        c = torch.cumsum(deltas, dim=0)                # (S,)
+        ts = torch.cat([t_hi[None], t_hi - c], dim=0)  # (S+1,) t_hi → … → t_lo
         return ts
+
 
     def set_model_fn(self, model_fn):
         self.model = lambda x, t: model_fn(x, t.expand(x.shape[0]))
