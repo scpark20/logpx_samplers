@@ -4,11 +4,11 @@ set -e
 # 여기서 GPU 번호 수동 지정
 CUDA_VISIBLE_DEVICES=0
 
-TAG=sana_train4.5
+TAG=home
 MODEL=SANA
 DATA=MSCOCO2017
 SAVE_ROOT=samplings/sana/train4.5
-BATCH_SIZE=10
+BATCH_SIZE=2
 ALGO=data_prediction
 SKIP=time_uniform_flow
 FLOW_SHIFT=3.0
