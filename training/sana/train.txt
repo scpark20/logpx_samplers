@@ -1,0 +1,7 @@
+0819-6 from 0819-1:SANA,CLIP,5steps
+0819-5 from 0819-1:SANA,CLIP,4steps
+0819-4 from 0819-1:SANA,CLIP,3steps
+0819-3 from 0819-1:SANA,CLIP,2steps
+
+0819-2 from 0819-1:CLIP,4steps
+0819-1 from dit0818-12:CLIP
