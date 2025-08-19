@@ -1,7 +1,12 @@
-0819-6 from 0819-1:SANA,CLIP,5steps
-0819-5 from 0819-1:SANA,CLIP,4steps
-0819-4 from 0819-1:SANA,CLIP,3steps
-0819-3 from 0819-1:SANA,CLIP,2steps
+0820-4 from 0820-1,6steps:SANA,6steps,BLIP
+0820-3 from 0820-1,6steps:SANA,6steps,ViT-L/14@336px
+0820-2 from 0820-1,6steps:SANA,6steps,lr3e-4
+0820-1 from 0819-1,6steps:SANA,6steps,lr1e-3
+
+0819-1,6steps from 0819-1:SANA,CLIP,5steps
+0819-1,5steps from 0819-1:SANA,CLIP,5steps
+0819-1,4steps from 0819-1:SANA,CLIP,4steps
+0819-1,3steps from 0819-1:SANA,CLIP,3steps # good 3steps는 잘됨
 
 0819-2 from 0819-1:CLIP,4steps
 0819-1 from dit0818-12:CLIP
