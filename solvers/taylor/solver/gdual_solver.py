@@ -24,7 +24,8 @@ class GDual_Solver(Solver):
         use_corrector=True,
         order1_kappa=False,
         order2_kappa=False,
-        train_mode=False
+        train_mode=False,
+        checkpoint=True
     ):
         super().__init__(noise_schedule, 'dual_prediction')
         assert pred_order <= 2 and corr_order <= 2
@@ -44,6 +45,7 @@ class GDual_Solver(Solver):
         self.train_mode = train_mode
         self.order1_kappa = order1_kappa
         self.order2_kappa = order2_kappa
+        self.checkpoint = checkpoint
 
         # learned timesteps (weights over (T - t_eps))
         t_0 = 1.0 / noise_schedule.total_N
@@ -139,7 +141,7 @@ class GDual_Solver(Solver):
 
         context = nullcontext() if self.train_mode else torch.no_grad()
         with context:
-            xc, ec = self.checkpoint_model_fn(x_pred, timesteps[0]) if self.train_mode else self.model_fn(x_pred, timesteps[0])
+            xc, ec = self.checkpoint_model_fn(x_pred, timesteps[0]) if self.train_mode and self.checkpoint else self.model_fn(x_pred, timesteps[0])
             params, hidden = self.param_extractor({'x':xc, 'e':ec, 't': timesteps[0:2], 'h': None, 'step': 0})
             
             use_tqdm = os.getenv("DPM_TQDM", "1") not in ("0","False","false","")
@@ -153,7 +155,7 @@ class GDual_Solver(Solver):
                 )
                 
                 if i < self.steps - 1:
-                    xn, en = self.checkpoint_model_fn(x_pred, timesteps[i+1]) if self.train_mode else self.model_fn(x_pred, timesteps[i+1]) 
+                    xn, en = self.checkpoint_model_fn(x_pred, timesteps[i+1]) if self.train_mode and self.checkpoint else self.model_fn(x_pred, timesteps[i+1]) 
                     params, hidden = self.param_extractor({'x':xn, 'e':en, 't': timesteps[i+1:i+3], 'h': hidden, 'step': i+1})
                 else:
                     break
