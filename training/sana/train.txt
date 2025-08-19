@@ -1,3 +1,5 @@
+0820-6 from 0820-1,6steps:SANA,6steps,batch
+0820-5 from 0820-3,6steps:SANA,6steps,ViT-L/14@336px,lr1e-3
 0820-4 from 0820-1,6steps:SANA,6steps,BLIP
 0820-3 from 0820-1,6steps:SANA,6steps,ViT-L/14@336px
 0820-2 from 0820-1,6steps:SANA,6steps,lr3e-4
