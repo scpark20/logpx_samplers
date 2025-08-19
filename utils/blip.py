@@ -38,7 +38,6 @@ class BLIPTextLikelihood(nn.Module):
         return ((x - self.mean) / self.std).to(dtype=self.net_dtype)  # pixel_values
 
     # ---- NLL(y|I): 텍스트 우도 기반 손실 (length_normalize 옵션 포함) ----
-    @torch.no_grad()  # 가중치 고정이라면 필요없지만, grad w.r.t. image를 위해선 해제 가능
     def _forward_logits(self, pixel_values, input_ids):
         # labels로만 넣으면 loss는 나오지만 reduction 제어를 위해 logits도 얻어둔다
         return self.model(pixel_values=pixel_values, input_ids=input_ids, return_dict=True).logits
