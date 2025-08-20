@@ -20,7 +20,7 @@ class LogAffineTransform(Transform):
         self.tau_tol = tau_tol
         
     def unpack(self, params):
-        # params: [B, ?]  (gamma, tau_x, tau_e가 앞 3개라고 가정)
+        # params: [B, ?] or [B, ?, C] (gamma, tau_x, tau_e가 앞 3개라고 가정)
         gamma = params[:, 0]
         tau_x = params[:, 1] + self.tau_offset
         tau_e = params[:, 2] + self.tau_offset
