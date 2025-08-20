@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from collections import OrderedDict
 
 class Extractor(nn.Module):
-    def __init__(self, hidden_dim=128, out_dim=5, input_shape=(4, 32, 32), dropout=0.0):
+    def __init__(self, hidden_dim=128, out_dim=5, input_shape=(4, 32, 32), dropout=0.0, **kwargs):
         super().__init__()
         # feature -> hidden
         self.feat = nn.Sequential(OrderedDict([
