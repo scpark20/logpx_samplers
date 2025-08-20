@@ -1,6 +1,9 @@
+0821-2 from 0818-1 : steps=7
+0821-1 from 0818-12 : steps=3
+
 Vast.ai Experiments
 0818-13 : Taylor,ViT-H
-0818-12 : Taylor,ViT-B
+0818-12 : Taylor,ViT-B # Good
 0818-11 : Taylor,inception
 0818-10 : Taylor,PSNR
 

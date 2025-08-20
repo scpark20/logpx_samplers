@@ -13,7 +13,7 @@ ALGO=data_prediction
 SKIP=time_uniform_flow
 FLOW_SHIFT=3.0
 ORDER=1
-N_SAMPLES=10000
+N_SAMPLES=1000
 SEED_OFFSET=1 # train : 1, valid : 0
 
 SOLVERS=("Euler")

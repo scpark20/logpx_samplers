@@ -1,3 +1,10 @@
+0821-5 from 0821-1:SANA,OpenCLIP,6steps,laion2b_s39b_b160k
+0821-5 from 0821-1:SANA,OpenCLIP,6steps,laion2b_s34b_b88k
+0821-4 from 0821-1:SANA,OpenCLIP,6steps,webli
+0821-3 from 0821-1:SANA,OpenCLIP,6steps,dfn5b
+0821-2 from 0821-1:SANA,OpenCLIP,6steps,datacomp_xl_s13b_b90k
+0821-1 from 0820-18:SANA,OpenCLIP,6steps,laion2b_s34b_b79k
+
 0820-18 from 0820-17:0820-18:SANA,CLIP,6steps,p1c1,notime
 0820-17 from 0820-13:0820-17:SANA,CLIP,6steps,p1,notime
 0820-16 from 0820-14:0820-16:SANA,CLIP,6steps,p1c1,gap
