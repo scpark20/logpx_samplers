@@ -1,3 +1,8 @@
+0821-15 from 0821-12:SANA,OpenCLIP,6steps,
+0821-14 from 0821-12:SANA,OpenCLIP,6steps,
+0821-13 from 0821-12:SANA,OpenCLIP,6steps,
+0821-12 from 0821-10:SANA,OpenCLIP,6steps,EVA02-E-14-plus
+
 0821-11 from 0821-10:SANA,OpenCLIP,6steps,ViT-SO400M-14-SigLIP-384
 0821-10 from 0821-6:SANA,OpenCLIP,6steps,ViT-H-14-378-quickgelu
 
