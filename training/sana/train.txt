@@ -1,3 +1,16 @@
+0821-26 from 0821-23:SANA,10steps,CLIP,inter
+0821-25 from 0821-23:SANA,8steps,CLIP,inter
+0821-24 from 0821-23:SANA,4steps,CLIP,inter
+0821-23 from 0821-17:SANA,6steps,CLIP,inter
+
+0821-21 from 0821-20:SANA,4steps,CLIP,GAP,hidden
+0821-20 from 0821-19:SANA,4steps,CLIP,GAP
+0821-19 from 0821-18:SANA,4steps,CLIP
+
+0821-18 from 0821-17:SANA,4steps,CLIP,1.6B_1024px
+0821-17 from 0821-12:SANA,6steps,CLIP,1.6B_1024px
+
+0821-16 from 0821-12:SANA,OpenCLIP,6steps,inception
 0821-15 from 0821-12:SANA,OpenCLIP,6steps,inception feature
 
 0821-15 from 0821-12:SANA,OpenCLIP,6steps,ViT-H-14-378-quickgelu
