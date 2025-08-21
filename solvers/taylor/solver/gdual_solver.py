@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from ...solver import Solver
 from contextlib import nullcontext
+import numpy as np
 
 class GDual_Solver(Solver):
     def __init__(
@@ -25,7 +26,7 @@ class GDual_Solver(Solver):
         order1_kappa=False,
         order2_kappa=False,
         train_mode=False,
-        checkpoint=True
+        checkpoint=True,
     ):
         super().__init__(noise_schedule, 'dual_prediction')
         assert pred_order <= 2 and corr_order <= 2
@@ -117,7 +118,7 @@ class GDual_Solver(Solver):
         return out
 
     # ---------- sampling ----------
-    def sample(self, x, model_fn, **kwargs):
+    def sample(self, x, model_fn, inter_return=False, **kwargs):
         self.set_model_fn(model_fn)
 
         device, dtype = x.device, x.dtype
@@ -132,6 +133,10 @@ class GDual_Solver(Solver):
         # 로그/비율 선계산
         log_alpha, log_sigma = torch.log(alphas), torch.log(sigmas)
         log_alpha_ratio, log_sigma_ratio = log_alpha[1:] - log_alpha[:-1], log_sigma[1:] - log_sigma[:-1]
+
+        if inter_return:
+            return_index = np.random.randint(0, self.steps)
+            inter = None
         
         # 초기 상태
         if self.scale_learning:
@@ -143,6 +148,8 @@ class GDual_Solver(Solver):
         with context:
             xc, ec = self.checkpoint_model_fn(x_pred, timesteps[0]) if self.train_mode and self.checkpoint else self.model_fn(x_pred, timesteps[0])
             params, hidden = self.param_extractor({'x':xc, 'e':ec, 't': timesteps[0:2], 'h': None, 'step': 0})
+            if inter_return and return_index == 0:
+                inter = xc
             
             use_tqdm = os.getenv("DPM_TQDM", "1") not in ("0","False","false","")
             for i in tqdm(range(self.steps), disable=not use_tqdm):
@@ -157,6 +164,8 @@ class GDual_Solver(Solver):
                 if i < self.steps - 1:
                     xn, en = self.checkpoint_model_fn(x_pred, timesteps[i+1]) if self.train_mode and self.checkpoint else self.model_fn(x_pred, timesteps[i+1]) 
                     params, hidden = self.param_extractor({'x':xn, 'e':en, 't': timesteps[i+1:i+3], 'h': hidden, 'step': i+1})
+                    if inter_return and return_index == i+1:
+                        inter = xn
                 else:
                     break
 
@@ -174,4 +183,7 @@ class GDual_Solver(Solver):
                 xp, ep = xc, ec
                 xc, ec = xn, en
 
-        return x_pred
+        if inter_return:
+            return x_pred, inter
+        else:
+            return x_pred

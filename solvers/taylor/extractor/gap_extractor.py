@@ -3,18 +3,34 @@ import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 
+class Linear(nn.Module):
+    def __init__(self, in_dim, out_dim):
+        super().__init__()
+        self.linear = nn.Linear(in_dim, out_dim)
+        torch.nn.init.normal_(self.linear.weight, mean=0.0, std=0.02)
+        torch.nn.init.zeros_(self.linear.bias)
+
+    def forward(self, x):
+        return self.linear(x)
+
 class Extractor(nn.Module):
-    def __init__(self, hidden_dim=128, out_dim=5, input_shape=(4, 32, 32), dropout=0.0, **kwargs):
+    def __init__(self, hidden_dim=128, out_dim=5, input_shape=(4, 32, 32), dropout=0.0, hidden=False, **kwargs):
         super().__init__()
         # feature -> hidden
         self.feat = nn.Sequential(OrderedDict([
             ("gap",  nn.AdaptiveAvgPool2d(1)),  # [B,C,H,W] -> [B,C,1,1]
             ("flat", nn.Flatten(1)),            # [B,C,1,1] -> [B,C]
-            ("proj", nn.Linear(input_shape[0], hidden_dim)),
+            ("proj", nn.Sequential(Linear(input_shape[0], hidden_dim),
+                                   nn.Tanh(),
+                                   Linear(hidden_dim, hidden_dim))
+            ),
         ]))
+        self.hidden = hidden
         self.hidden_dim = hidden_dim
-        self.time_proj = nn.Linear(2, hidden_dim)
-        self.hidden_proj = nn.Linear(hidden_dim, hidden_dim)
+        self.time_proj = nn.Sequential(Linear(2, hidden_dim),
+                                       nn.Tanh(),
+                                       Linear(hidden_dim, hidden_dim))
+        self.hidden_proj = Linear(hidden_dim, hidden_dim)
         self.dropout = nn.Dropout(p=dropout)
         self.hidden_init = nn.Parameter(torch.zeros(1, hidden_dim))
         self.act = nn.Tanh()
@@ -28,7 +44,7 @@ class Extractor(nn.Module):
     def forward(self, inputs):
         
         if inputs['h'] is None:
-            inputs['h'] = self.hidden_init
+            inputs['h'] = torch.zeros(len(inputs['x']), self.hidden_dim).to(inputs['x'].device)
         h = self.feat(inputs['x'])
         h = h + self.time_proj(inputs['t'][None, :])
         h = h + self.hidden_proj(inputs['h'])
@@ -37,4 +53,7 @@ class Extractor(nn.Module):
         out = self.out(h)
         # (B, 2, n_params)
         out = out.reshape(len(inputs['x']), 2, self.out_dim)
-        return out, None
+        if self.hidden:
+            return out, h
+        else:
+            return out, None
