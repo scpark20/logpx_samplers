@@ -1,4 +1,11 @@
-0821-5 from 0821-1:SANA,OpenCLIP,6steps,laion2b_s39b_b160k
+0821-11 from 0821-10:SANA,OpenCLIP,6steps,ViT-SO400M-14-SigLIP-384
+0821-10 from 0821-6:SANA,OpenCLIP,6steps,ViT-H-14-378-quickgelu
+
+0821-9 from 0821-7:SANA,CLIP,6steps,sine
+0821-8 from 0821-7:SANA,CLIP,6steps,cosine_sharp
+0821-7 from 0821-1:SANA,CLIP,6steps,angular
+
+0821-6 from 0821-1:SANA,OpenCLIP,6steps,laion2b_s39b_b160k
 0821-5 from 0821-1:SANA,OpenCLIP,6steps,laion2b_s34b_b88k
 0821-4 from 0821-1:SANA,OpenCLIP,6steps,webli
 0821-3 from 0821-1:SANA,OpenCLIP,6steps,dfn5b

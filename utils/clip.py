@@ -158,3 +158,148 @@ class CLIPEmbedder(nn.Module):
         if return_logits:
             return loss, {"logits_per_image": logits_per_image, "logits_per_text": logits_per_text}
         return loss
+
+    # ---------------------------------------------------------------------
+    # 3) Angular / Hinge / Sharpened Cosine losses
+    #    - 모든 손실은 내부에서 L2 정규화 후 fp32로 계산하여 안정화합니다.
+    #    - texts 가 1개이고 images가 B개면 자동 broadcast 합니다.
+    #    - 각도 단위는 라디안입니다.
+    # ---------------------------------------------------------------------
+
+    def angular_loss(
+        self,
+        images,
+        texts,
+        *,
+        input_range: str = "-1..1",
+        clamp_mode: str = "ste",
+        squared: bool = False,        # True면 θ^2 (근접 구간 더 부드러움)
+        reduction: str = "mean",
+        loss_weight: float = 1.0,
+        eps: float = 1e-6,
+    ):
+        """
+        L_ang = arccos( cos(u,v) )  (정규화된 임베딩)
+        ||∂L/∂u|| = 1 이라 근접할수록 사라지지 않는 안정적 신호.
+        """
+        img = self.encode_image(images, input_range=input_range, clamp_mode=clamp_mode).float()
+        txt = self.encode_text(texts).float()
+
+        # L2 normalize
+        img = F.normalize(img, dim=-1)
+        txt = F.normalize(txt, dim=-1)
+
+        # broadcast 1→B if needed
+        if txt.shape[0] == 1 and img.shape[0] > 1:
+            txt = txt.expand(img.shape[0], -1)
+        if img.shape[0] == 1 and txt.shape[0] > 1:
+            img = img.expand(txt.shape[0], -1)
+        if img.shape[0] != txt.shape[0]:
+            raise ValueError(f"Batch mismatch: images={img.shape[0]} vs texts={txt.shape[0]}")
+
+        s = (img * txt).sum(dim=-1).clamp_(-1 + eps, 1 - eps)
+        theta = torch.acos(s)                           # [0, π]
+        loss_vec = theta * theta if squared else theta
+
+        if reduction == "mean": loss = loss_vec.mean()
+        elif reduction == "sum": loss = loss_vec.sum()
+        elif reduction == "none": loss = loss_vec
+        else: raise ValueError("reduction must be 'mean'|'sum'|'none'")
+        return loss_weight * loss
+
+    def angular_hinge(
+        self,
+        images,
+        texts,
+        *,
+        input_range: str = "-1..1",
+        clamp_mode: str = "ste",
+        margin: float = 0.10,         # 라디안: ~5.7°
+        reduction: str = "mean",
+        loss_weight: float = 1.0,
+        eps: float = 1e-6,
+    ):
+        """
+        L = relu( arccos(cos) - margin )
+        -> θ가 margin 이하로 내려갈 때까지 지속적으로 신호를 줌.
+        """
+        img = self.encode_image(images, input_range=input_range, clamp_mode=clamp_mode).float()
+        txt = self.encode_text(texts).float()
+
+        img = F.normalize(img, dim=-1)
+        txt = F.normalize(txt, dim=-1)
+
+        if txt.shape[0] == 1 and img.shape[0] > 1:
+            txt = txt.expand(img.shape[0], -1)
+        if img.shape[0] == 1 and txt.shape[0] > 1:
+            img = img.expand(txt.shape[0], -1)
+        if img.shape[0] != txt.shape[0]:
+            raise ValueError(f"Batch mismatch: images={img.shape[0]} vs texts={txt.shape[0]}")
+
+        s = (img * txt).sum(dim=-1).clamp_(-1 + eps, 1 - eps)
+        theta = torch.acos(s)
+        loss_vec = F.relu(theta - margin)
+
+        if reduction == "mean": loss = loss_vec.mean()
+        elif reduction == "sum": loss = loss_vec.sum()
+        elif reduction == "none": loss = loss_vec
+        else: raise ValueError("reduction must be 'mean'|'sum'|'none'")
+        return loss_weight * loss
+
+    def cosine_sharp_loss(
+        self,
+        images,
+        texts,
+        *,
+        input_range: str = "-1..1",
+        clamp_mode: str = "ste",
+        tau: float = 0.85,            # 상단 영역 확장 임계(0.8~0.9 권장)
+        alpha: float = 8.0,           # softplus 기울기(5~10 권장)
+        reduction: str = "mean",
+        loss_weight: float = 1.0,
+        eps: float = 1e-6,
+    ):
+        """
+        코사인 근접 구간을 '확대'하여 좋은 품질에서도 그래디언트 유지:
+          s_t = (s - tau) / (1 - tau)
+          L   = softplus(alpha * (1 - s_t)) / alpha
+        """
+        img = self.encode_image(images, input_range=input_range, clamp_mode=clamp_mode).float()
+        txt = self.encode_text(texts).float()
+
+        img = F.normalize(img, dim=-1)
+        txt = F.normalize(txt, dim=-1)
+
+        if txt.shape[0] == 1 and img.shape[0] > 1:
+            txt = txt.expand(img.shape[0], -1)
+        if img.shape[0] == 1 and txt.shape[0] > 1:
+            img = img.expand(txt.shape[0], -1)
+        if img.shape[0] != txt.shape[0]:
+            raise ValueError(f"Batch mismatch: images={img.shape[0]} vs texts={txt.shape[0]}")
+
+        s = (img * txt).sum(dim=-1).clamp_(-1 + eps, 1 - eps)
+        s_t = (s - tau) / (1 - tau + 1e-6)             # 상단 영역 재스케일
+        loss_vec = F.softplus(alpha * (1.0 - s_t)) / alpha
+
+        if reduction == "mean": loss = loss_vec.mean()
+        elif reduction == "sum": loss = loss_vec.sum()
+        elif reduction == "none": loss = loss_vec
+        else: raise ValueError("reduction must be 'mean'|'sum'|'none'")
+        return loss_weight * loss
+
+    def _pair_norm_(self, images, texts, input_range="-1..1", clamp_mode="ste", eps=1e-6):
+        img = self.encode_image(images, input_range=input_range, clamp_mode=clamp_mode).float()
+        txt = self.encode_text(texts).float()
+        img = F.normalize(img, dim=-1); txt = F.normalize(txt, dim=-1)
+        if txt.shape[0]==1 and img.shape[0]>1: txt = txt.expand(img.shape[0], -1)
+        if img.shape[0]==1 and txt.shape[0]>1: img = img.expand(txt.shape[0], -1)
+        if img.shape[0]!=txt.shape[0]: raise ValueError(f"B mismatch: img={img.shape[0]} txt={txt.shape[0]}")
+        s = (img*txt).sum(dim=-1).clamp(-1+eps, 1-eps)
+        return img, txt, s
+
+    # 4) Sine loss
+    def sine_loss(self, images, texts, *, input_range="-1..1", clamp_mode="ste",
+                reduction="mean", loss_weight=1.0, eps=1e-6):
+        _, _, s = self._pair_norm_(images, texts, input_range, clamp_mode, eps)
+        loss_vec = torch.sqrt(1.0 - s*s)  # sin(theta)
+        return loss_weight * (loss_vec.mean() if reduction=="mean" else loss_vec.sum() if reduction=="sum" else loss_vec)
