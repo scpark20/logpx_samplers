@@ -16,6 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run sampling")
     parser.add_argument('--tag',             type=str,   default='tag')
     parser.add_argument('--model',           type=str,   default='SANA')
+    parser.add_argument('--model_id',        type=str,   default=None)
     parser.add_argument('--solver',          type=str,   default='DPM-Solver')
     parser.add_argument('--algorithm_type',  type=str,   default='data_prediction')
     parser.add_argument('--skip_type',       type=str,   default='time_uniform')
@@ -42,7 +43,10 @@ def parse_args() -> EasyDict:
 def get_model(config: EasyDict):
     if config.model == 'SANA':
         from backbones.sana import SANA
-        return SANA()
+        if config.model_id is not None:
+            return SANA(model_id=config.model_id)
+        else:
+            return SANA
     if config.model == 'PixArt-Sigma':
         from backbones.pixart_sigma import PixArtSigma
         return PixArtSigma()
