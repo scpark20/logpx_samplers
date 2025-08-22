@@ -1,3 +1,34 @@
+0822-12 from 0822-5:SANA,6steps,CLIP,clip_loss,scheduling
+
+# Good
+0822-11 from 0822-8      :SANA,5steps,CLIP,scheduling
+0822-10 from 0822-8      :SANA,4steps,CLIP,scheduling
+0822-9 from 0822-8       :SANA,3steps,CLIP,scheduling
+0822-8 from 0822-1_2steps:SANA,2steps,CLIP,scheduling
+
+0822-7 from 0822-4:SANA,6steps,CLIP,cosine_infonce_like
+0822-5 from 0822-1:SANA,6steps,CLIP,clip_loss
+
+#Good
+0822-1_2steps from 0822-1:SANA,2steps,CLIP
+0822-4 from 0822-3:SANA,6steps,CLIP
+0822-3 from 0822-2:SANA,5steps,CLIP
+0822-2 from 0822-1:SANA,4steps,CLIP
+0822-1 from 0821-36:SANA,3steps,CLIP
+
+0821-36 from 0821-33:SANA,10steps,OpenCLIP,inter,tau=0
+0821-35 from 0821-33:SANA,8steps,OpenCLIP,inter,tau=0
+0821-34 from 0821-33:SANA,6steps,OpenCLIP,inter,tau=0
+0821-33 from 0821-30:SANA,4steps,OpenCLIP,inter,tau=0
+
+0821-32 from 0821-31:SANA,6steps,CLIP,tau=0
+0821-31 from 0821-28:SANA,6steps,CLIP,tau=0
+
+0821-30 from 0821-27:SANA,10steps,OpenCLIP,inter
+0821-29 from 0821-27:SANA,8steps,OpenCLIP,inter
+0821-28 from 0821-27:SANA,6steps,OpenCLIP,inter
+0821-27 from 0821-26:SANA,4steps,OpenCLIP,inter
+
 0821-26 from 0821-23:SANA,10steps,CLIP,inter
 0821-25 from 0821-23:SANA,8steps,CLIP,inter
 0821-24 from 0821-23:SANA,4steps,CLIP,inter
