@@ -157,6 +157,29 @@ class CLIPEmbedder(nn.Module):
         loss = 0.5 * (loss_i + F.cross_entropy(logits_per_text, targets, reduction=reduction)) if symmetric else loss_i
         return (loss, {"logits_per_image": logits_per_image, "logits_per_text": logits_per_text}) if return_logits else loss
 
+    def cosine_infonce_like(self, images, texts, *,
+                        tau=0.07,
+                        neg_mean=None,   # None이면 배치로 추정(없으면 0.0)
+                        eff_batch=None,  # None이면 실제 B 사용
+                        input_range="-1..1", clamp_mode="ste",
+                        reduction="mean", loss_weight=1.0, eps=1e-6):
+        img, txt, s_pos = self._pair_norm_(images, texts, input_range, clamp_mode, eps)  # s_pos: [B]
+        B = s_pos.shape[0]
+        if eff_batch is None: eff_batch = max(B, 2)  # log(B-1) 안전
+        if neg_mean is None:
+            if B > 1:
+                sims = (img @ txt.t()).float()               # [B,B]
+                neg_mean = sims[~torch.eye(B, dtype=torch.bool, device=sims.device)].mean()
+            else:
+                neg_mean = s_pos.new_tensor(0.0)
+
+        m_eff = neg_mean + tau * torch.log(s_pos.new_tensor(max(eff_batch-1, 1.0)))
+        z = (m_eff - s_pos) / max(tau, 1e-6)                # temperature 적용
+        loss_vec = F.softplus(z)                             # logistic형
+        if reduction == "mean": loss = loss_vec.mean()
+        elif reduction == "sum": loss = loss_vec.sum()
+        else: loss = loss_vec
+        return loss_weight * loss
 
     # ---------------------------------------------------------------------
     # 3) Angular / Hinge / Sharpened Cosine losses
