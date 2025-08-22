@@ -117,47 +117,46 @@ class CLIPEmbedder(nn.Module):
         images,
         texts,
         *,
-        temperature: float = 0.07,
+        temperature: float | None = 0.07,   # ← 기본값 0.07 유지
         input_range: str = "-1..1",
         clamp_mode: str = "ste",
         symmetric: bool = True,
         reduction: str = "mean",
         return_logits: bool = False,
     ):
-        """
-        images:  FloatTensor [B, C, H, W]
-        texts:   str | list[str] | LongTensor[B,77]
-        temperature: tau in (0, +inf). Smaller → sharper.
-        returns: loss (and optionally logits dict)
-        """
         img = self.encode_image(images, input_range=input_range, clamp_mode=clamp_mode)
         txt = self.encode_text(texts)
-
-        # L2 normalize for cosine-sim based logits (standard CLIP training)
         img = img / img.norm(dim=-1, keepdim=True).clamp_min(1e-12)
         txt = txt / txt.norm(dim=-1, keepdim=True).clamp_min(1e-12)
 
         if img.shape[0] != txt.shape[0]:
             raise ValueError(f"Batch mismatch: images={img.shape[0]} vs texts={txt.shape[0]}")
 
-        logit_scale = 1.0 / float(temperature)
-        logits_per_image = (logit_scale * img @ txt.t()).float()         # [B,B]
-        logits_per_text  = logits_per_image.t().contiguous()             # [B,B]
+        # --- scale = 1/tau 결정 ---
+        if temperature is None:
+            if hasattr(self.model, "logit_scale"):
+                ls = self.model.logit_scale
+                val = float(ls.detach().to(torch.float32))
+                scale = ls.exp() if val < 10.0 else ls   # log-파라미터/선형스케일 모두 대응
+                scale = torch.clamp(scale, max=100)      # 관례(τ ≥ 0.01)
+            else:
+                raise ValueError("Model has no 'logit_scale'; pass an explicit temperature.")
+        else:
+            scale = 1.0 / float(temperature)
+
+        if not torch.is_tensor(scale):
+            scale = torch.as_tensor(scale, device=img.device, dtype=img.dtype)
+        else:
+            scale = scale.to(device=img.device, dtype=img.dtype)
+
+        logits_per_image = (scale * img @ txt.t()).float()
+        logits_per_text  = logits_per_image.t().contiguous()
         targets = torch.arange(img.shape[0], device=logits_per_image.device)
 
         loss_i = F.cross_entropy(logits_per_image, targets, reduction=reduction)
-        if symmetric:
-            loss_t = F.cross_entropy(logits_per_text,  targets, reduction=reduction)
-            if reduction == "none":
-                loss = 0.5 * (loss_i + loss_t)                            # [B]
-            else:
-                loss = 0.5 * (loss_i + loss_t)                            # scalar
-        else:
-            loss = loss_i
+        loss = 0.5 * (loss_i + F.cross_entropy(logits_per_text, targets, reduction=reduction)) if symmetric else loss_i
+        return (loss, {"logits_per_image": logits_per_image, "logits_per_text": logits_per_text}) if return_logits else loss
 
-        if return_logits:
-            return loss, {"logits_per_image": logits_per_image, "logits_per_text": logits_per_text}
-        return loss
 
     # ---------------------------------------------------------------------
     # 3) Angular / Hinge / Sharpened Cosine losses
