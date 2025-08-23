@@ -3,7 +3,7 @@ set -e
 export DPM_TQDM=False
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-1}
 
-for s in 2 8; do
+for s in 3 9; do
   for combo in p2c2 p2c3 p3c3; do
     case "$combo" in
       p1)   P=1; C=1; UC=0 ;;
