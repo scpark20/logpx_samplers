@@ -1,3 +1,8 @@
+
+0822-16 from 0822-13:SANA,5steps,CLIP,clip_loss,scheduling,tau1
+0822-15 from 0822-13:SANA,4steps,CLIP,clip_loss,scheduling,tau1
+0822-14 from 0822-13:SANA,3steps,CLIP,clip_loss,scheduling,tau1
+0822-13 from 0822-12:SANA,6steps,CLIP,clip_loss,scheduling,tau1
 0822-12 from 0822-5:SANA,6steps,CLIP,clip_loss,scheduling
 
 # Good
