@@ -43,7 +43,7 @@ config.latent_size   = (4, 32, 32)
 # LR & Scheduler
 config.base_lr       = 2e-3
 config.end_lr        = 1e-4
-config.total_steps   = 20*1000        # 전체 학습 스텝
+config.total_steps   = 10*1000        # 전체 학습 스텝
 
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
@@ -104,22 +104,14 @@ solver = GDual_Solver(
 
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
 
-from torch.optim.lr_scheduler import LambdaLR
+# ---- Scheduler: Pure Cosine ----
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
-start_lr    = config.base_lr          # 2e-3
-end_lr      = config.end_lr
-decay_steps = config.total_steps
-ratio       = end_lr / start_lr       # 0.05
-
-def lr_lambda(step: int):
-    # 0 → 20k: 선형으로 1.0 → 0.05, 그 이후 고정
-    if step >= decay_steps:
-        return ratio
-    return 1.0 - (1.0 - ratio) * (step / decay_steps)
-
-# global_step로 재개하는 경우 last_epoch=global_step-1로 맞추면 정확히 이어짐
-scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
-# 재개 시 예: scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda, last_epoch=global_step-1)
+scheduler = CosineAnnealingLR(
+    optimizer,
+    T_max=config.total_steps,   # 전체 스텝에 걸쳐 한 번의 코사인
+    eta_min=config.end_lr
+)
 
 print('solver/optimizer')
 
