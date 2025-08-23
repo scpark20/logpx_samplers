@@ -4,7 +4,7 @@ export DPM_TQDM=False
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 
 for s in 2 8; do
-  for combo in p1 p1c1 p1c2 p2c2 p2c3 p3c3; do
+  for combo in p1 p1c1 p1c2; do
     case "$combo" in
       p1)   P=1; C=1; UC=0 ;;
       p1c1) P=1; C=1; UC=1 ;;
