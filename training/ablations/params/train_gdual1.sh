@@ -16,7 +16,7 @@ case "$FLAG" in
 esac
 
 for s in 3 5 7 9; do
-  LOG="logs/ablations/pred_corr/s${s}_${SUF}"
+  LOG="logs/ablations/params/s${s}_${SUF}"
 
   if [[ -d "$LOG" ]]; then
     echo ">>> exists: $LOG — skipping"
