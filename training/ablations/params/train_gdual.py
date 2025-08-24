@@ -20,43 +20,44 @@ from tqdm import tqdm
 def get_args():
     p = argparse.ArgumentParser(description="GDual training (only 3 overrides)")
     p.add_argument('--n_steps',    type=int, default=3)
-    p.add_argument('--pred_order', type=int, default=1)
-    p.add_argument('--corr_order', type=int, default=1)
     p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
-    p.add_argument('--use_corrector', action='store_true',
-                   help='Enable corrector stage (default: disabled)')
+    p.add_argument('--except_gamma', action='store_true',)
+    p.add_argument('--except_tau', action='store_true',)
+    p.add_argument('--except_kappa', action='store_true',)
+    p.add_argument('--shared_taukappa', action='store_true',)
     return p.parse_args()
 
 args = get_args()
 
-# ===============================
-# Config (원문 유지 + 3가지만 덮어쓰기)
-# ===============================
-config = EasyDict()
-config.backbone      = 'DiT'
-config.valid_pt_dir  = '/dataset/dit/eval4.0'
-config.batch_size    = 10
-config.CFG           = 4.0
-config.val_every     = 100
-config.latent_size   = (4, 32, 32)
+# 하나만 선택(또는 0개) 강제
+only_one = int(args.except_gamma) + int(args.except_tau) + int(args.except_kappa) + int(args.shared_taukappa)
+if only_one > 1:
+    raise ValueError("Choose at most one of: --except_gamma, --except_tau, --except_kappa, --shared_taukappa")
 
-# LR & Scheduler
-config.base_lr       = 2e-3
-config.end_lr        = 1e-4
-config.total_steps   = 10*1000+1        # 전체 학습 스텝
+# 기본값
+DEFAULTS = dict(
+    backbone='DiT',
+    valid_pt_dir='/dataset/dit/eval4.0',
+    batch_size=10,
+    CFG=4.0,
+    val_every=100,
+    latent_size=(4,32,32),
+    base_lr=2e-3,
+    end_lr=1e-4,
+    total_steps=10_001,
+    n_steps=3,
+    log_dir='logs/ablations/pred_corr/tmp',
+    losses=['inception','PSNR','classifier'],
+    main_loss='classifier',
+    except_gamma=False,
+    except_tau=False,
+    except_kappa=False,
+    shared_taukappa=False,
+)
 
-# ---- 여기만 CLI로 덮어씀 ----
-config.n_steps       = args.n_steps
-config.pred_order    = args.pred_order
-config.corr_order    = args.corr_order
-config.log_dir       = args.log_dir or config.log_dir
-config.use_corrector = args.use_corrector
-# -----------------------------
-
-# Loss
-config.classifier = EasyDict()
-config.losses = ['inception', 'PSNR', 'classifier']
-config.main_loss = 'classifier'
+# DEFAULTS → CLI 덮어쓰기(None은 무시)
+config = EasyDict(DEFAULTS)
+config.update({k: v for k, v in vars(args).items() if v is not None})
 
 os.makedirs(config.log_dir, exist_ok=True)
 
@@ -81,23 +82,28 @@ print('done')
 # Solver / Optimizer / Scheduler
 # ===============================
 from solvers.taylor.solver.gdual_solver import GDual_Solver
-from solvers.taylor.transform.logaffine_transform import LogAffineTransform
+from solvers.taylor.transform.ablation_logaffine_transform import LogAffineTransform
 from solvers.taylor.extractor.table_extractor import Extractor
 
 noise_schedule = model.get_noise_schedule()
-extractor = Extractor(steps=config.n_steps)
-transform = LogAffineTransform(gamma_push=True, gamma_max=2, tau_offset=1, kappa_max=2, eps=1e-2)
+extractor = Extractor()
+transform = LogAffineTransform(
+    gamma_push=True, gamma_max=2, tau_offset=1, kappa_max=2, eps=1e-2,
+    except_gamma=config.except_gamma,
+    except_tau=config.except_tau,
+    except_kappa=config.except_kappa,
+    shared_taukappa=config.shared_taukappa)
 solver = GDual_Solver(
     noise_schedule,
     steps=config.n_steps,
     transform=transform,
     param_extractor=extractor,
     skip_type="time_uniform",
-    pred_order=config.pred_order,
-    corr_order=config.corr_order,
+    pred_order=1,
+    corr_order=2,
     order1_kappa=True,
     order2_kappa=True,
-    use_corrector=config.use_corrector,
+    use_corrector=True,
     time_learning=True,
     train_mode=True
 ).to(device)
