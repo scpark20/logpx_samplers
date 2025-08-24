@@ -60,11 +60,11 @@ class LogAffineTransform(Transform):
             tau_x = torch.ones_like(tau_x)
             tau_e = torch.ones_like(tau_e)
         if self.except_kappa:
-            kappa_x = torch.zeros_like(kappa_x)
-            kappa_e = torch.zeros_like(kappa_e)
+            k_x = torch.zeros_like(k_x)
+            k_e = torch.zeros_like(k_e)
         if self.shared_taukappa:
             tau_e = tau_x
-            kappa_e = kappa_x
+            k_e = k_x
             
         return {'gamma': gamma, 'tau_x': tau_x, 'tau_e': tau_e,
         'kappa_x': k_x, 'kappa_e': k_e}
