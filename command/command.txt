@@ -10,6 +10,10 @@ mkdir /dataset
 scp -P 22223 scpark@220.117.157.23:/data/scpark/dataset/*.zip /dataset
 scp -P 22223 scpark@220.117.157.23:/data/scpark/dataset/train4.0_10k.zip /dataset
 
+# DiT
+mkdir -p /dataset/dit
+scp -P 22223 scpark@220.117.157.23:/data/scpark/dataset/dit/*.zip /dataset/dit
+
 # SANA
 mkdir -p /dataset/sana
 scp -P 22223 scpark@220.117.157.23:/data/scpark/dataset/sana/*.zip /dataset/sana
@@ -30,6 +34,7 @@ http://localhost:6006
 zip -r 0817.zip logs
 
 5. logs 보내기
+scp -P 22223 0823-2.zip scpark@220.117.157.23:/data/scpark/logs
 scp -P 22223 0823-1.zip scpark@220.117.157.23:/data/scpark/logs
 scp -P 22223 0818.zip scpark@220.117.157.23:/data/scpark/logs
 scp -r -P 22223 *.zip scpark@220.117.157.23:/data/scpark/logs/sana/
