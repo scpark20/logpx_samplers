@@ -1,17 +1,14 @@
-import argparse
-import os
-import re
-import sys
-import json
-import math
-import torch
-import numpy as np
+#!/usr/bin/env python
+import argparse, os, re, sys, json, math, torch, numpy as np
 from easydict import EasyDict
 from pathlib import Path
 from tqdm import tqdm
 from utils.inception import FIDInception
 from utils.clip import CLIPEmbedder
 
+import torch.distributed as dist
+
+# ---------------------- arg parsing ----------------------
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run sampling")
     parser.add_argument('--tag',             type=str,   default='tag')
@@ -31,15 +28,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--output_noise',    action='store_true',  default=False)
     parser.add_argument('--output_traj',     action='store_true',  default=False)
     parser.add_argument('--inception',       action='store_true',  default=False)
+    parser.add_argument('--sample',          action='store_true',  default=False)
     parser.add_argument('--clip',            action='store_true',  default=False)
     parser.add_argument('--seed_offset',     type=int,   default=0)
     return parser
 
 def parse_args() -> EasyDict:
-    parser = build_parser()
-    args = parser.parse_args()
-    return EasyDict(vars(args))
+    return EasyDict(vars(build_parser().parse_args()))
 
+# ---------------------- user funcs ----------------------
 def get_model(config: EasyDict):
     if config.model == 'SANA':
         from backbones.sana import SANA
@@ -94,6 +91,7 @@ def save_config(config):
     with open(os.path.join(config.save_dir, 'config.json'), 'w') as f:
         json.dump(dict(config), f, indent=2)
 
+# ---------------------- main ----------------------
 def main():
     config = parse_args()
     config.save_dir = get_sampling_dir(config)
@@ -125,7 +123,7 @@ def main():
                 if config.inception or config.clip:
                     raw_outputs = model.decode_vae(outputs['samples'], raw_output=True)
                     if config.inception:
-                        inception_features = inception(raw_outputs).detach().cpu()
+                        inception_features = inception(raw_outputs, clamp_mode="hard").detach().cpu()
                     if config.clip:
                         clip_features = clip.encode_image(raw_outputs).detach().cpu()
                 samples = outputs['samples'].detach().cpu()
@@ -135,9 +133,9 @@ def main():
                     trajs = outputs['trajs'].detach().cpu()
         
         for index in range(start, end):
-            output = {'sample': samples[index-start],
-                      'cond': conds[index-start]
-                      }
+            output = {'cond': conds[index-start]}
+            if config.sample:
+                output['sample'] = samples[index-start]
             if config.inception:
                 output['inception_feature'] = inception_features[index-start]
             if config.clip:
