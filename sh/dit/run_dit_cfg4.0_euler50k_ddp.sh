@@ -2,7 +2,8 @@
 set -e
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+#CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+CUDA_VISIBLE_DEVICES=0
 
 TAG=dit_euler50k
 SAVE_ROOT=samplings/dit/euler50k
