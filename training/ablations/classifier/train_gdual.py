@@ -78,7 +78,8 @@ os.makedirs(config.log_dir, exist_ok=True)
 # ===============================
 from backbones.dit import DiT
 from utils.inception import FIDInception
-from utils.general_classifier import Classifier
+#from utils.general_classifier import Classifier
+from utils.vit import ViTClassifier
 
 if config.backbone == 'DiT':
     model = DiT(trainable=True)  # 내부 구현에 맞춰 유지
@@ -88,10 +89,12 @@ print(model)
 inception = FIDInception().to(device)
 if 'classifier' in config.losses:
     arch, weights = MODELS_FOR_EXP[config.classifier_num]
-    classifier = Classifier(
-            arch=arch,
-            weights=weights
-        ).to(device)
+    # classifier = Classifier(
+    #         arch=arch,
+    #         weights=weights,
+    #         use_weight_transforms=False
+    #     ).to(device)
+    classifier = ViTClassifier().to(device)
 print('done')
 
 # ===============================
