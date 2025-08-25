@@ -1,16 +1,16 @@
 #!/usr/bin/env python
 import argparse, os, re, sys, json, math, torch, numpy as np
+from datetime import timedelta
 from easydict import EasyDict
-from pathlib import Path
 from tqdm import tqdm
+import torch.distributed as dist
+
 from utils.inception import FIDInception
 from utils.clip import CLIPEmbedder
 
-import torch.distributed as dist
-
-# ---------------------- arg parsing ----------------------
+# ---------------------- args ----------------------
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Run sampling (multi-GPU friendly)")
+    p = argparse.ArgumentParser(description="Sampling (multi-GPU, torchrun)")
     p.add_argument('--tag',             type=str,   default='tag')
     p.add_argument('--model',           type=str,   default='SANA')
     p.add_argument('--model_id',        type=str,   default=None)
@@ -24,7 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument('--data',            type=str,   default='MSCOCO2017')
     p.add_argument('--save_root',       type=str,   default='/data/scpark/samplings/')
     p.add_argument('--n_samples',       type=int,   default=100)
-    p.add_argument('--batch_size',      type=int,   default=5)     # per-rank batch size
+    p.add_argument('--batch_size',      type=int,   default=5)      # per-rank
     p.add_argument('--output_noise',    action='store_true',  default=False)
     p.add_argument('--output_traj',     action='store_true',  default=False)
     p.add_argument('--inception',       action='store_true',  default=False)
@@ -38,23 +38,32 @@ def parse_args() -> EasyDict:
 
 # ---------------------- dist helpers ----------------------
 def init_dist():
-    """Init torch.distributed (NCCL). Returns (rank, world_size, local_rank)."""
-    if 'WORLD_SIZE' in os.environ and int(os.environ['WORLD_SIZE']) > 1:
-        rank = int(os.environ['RANK'])
-        world_size = int(os.environ['WORLD_SIZE'])
-        local_rank = int(os.environ.get('LOCAL_RANK', rank % torch.cuda.device_count()))
-        torch.cuda.set_device(local_rank)
-        dist.init_process_group(backend='nccl', init_method='env://')
-        return rank, world_size, local_rank
-    # single process
+    """Init torch.distributed. Returns (rank, world, local_rank)."""
+    world = int(os.environ.get("WORLD_SIZE", "1"))
+    if world > 1:
+        rank  = int(os.environ["RANK"])
+        local = int(os.environ.get("LOCAL_RANK", rank % max(1, torch.cuda.device_count())))
+        torch.cuda.set_device(local)
+        backend = os.environ.get("DIST_BACKEND", "nccl")
+        timeout_s = int(os.environ.get("DIST_TIMEOUT", "300"))
+        dist.init_process_group(
+            backend=backend, init_method="env://",
+            timeout=timedelta(seconds=timeout_s),
+            device_id=local,                    # ✅ 경고/행 위험 제거
+        )
+        return rank, world, local
     return 0, 1, 0
 
-def bcast_str(s: str, src: int = 0) -> str:
-    if not dist.is_available() or not dist.is_initialized():
-        return s
-    obj = [s]
-    dist.broadcast_object_list(obj, src=src)
-    return obj[0]
+def barrier(local_rank: int):
+    if dist.is_available() and dist.is_initialized():
+        dist.barrier(device_ids=[local_rank])
+
+def bcast_obj(obj, src=0):
+    if not (dist.is_available() and dist.is_initialized()):
+        return obj
+    container = [obj]
+    dist.broadcast_object_list(container, src=src)
+    return container[0]
 
 # ---------------------- user funcs ----------------------
 def get_model(config: EasyDict):
@@ -87,20 +96,22 @@ def get_solver(config: EasyDict):
 
 def get_data(config: EasyDict):
     if config.data == 'MSCOCO2017':
+        import numpy as np
         return np.load('prompts/mscoco2017.npz')['arr_0'].tolist()
     if config.data == 'ImageNet':
         return [i % 1000 for i in range(config.n_samples)]
     raise ValueError(f"Unknown data: {config.data}")
 
 def get_sampling_dir(config, rank=0):
-    p, r = config.tag, config.save_root
-    os.makedirs(r, exist_ok=True)
-    i = max([int(m.group(1)) for d in os.listdir(r)
-             if (m := re.match(rf'{re.escape(p)}_(\d+)$', d))] or [-1])
-    sampling_dir = os.path.join(r, f"{p}_{i+1}")
+    tag, root = config.tag, config.save_root
+    os.makedirs(root, exist_ok=True)
+    # 다음 인덱스 결정
+    i = max([int(m.group(1)) for d in os.listdir(root)
+             if (m := re.match(rf'{re.escape(tag)}_(\d+)$', d))] or [-1]) + 1
+    path = os.path.join(root, f"{tag}_{i}")
     if rank == 0:
-        os.makedirs(sampling_dir, exist_ok=True)
-    return sampling_dir
+        os.makedirs(path, exist_ok=True)
+    return path
 
 def save_config(config):
     with open(os.path.join(config.save_dir, 'config.json'), 'w') as f:
@@ -109,44 +120,41 @@ def save_config(config):
 # ---------------------- main ----------------------
 def main():
     config = parse_args()
+    rank, world, local = init_dist()
+    device = torch.device(f"cuda:{local}" if torch.cuda.is_available() else "cpu")
 
-    rank, world_size, local_rank = init_dist()
-    device = torch.device(f'cuda:{local_rank}' if torch.cuda.is_available() else 'cpu')
-
-    # rank0 decides save_dir, broadcast to others
-    save_dir = get_sampling_dir(config, rank=rank)
-    config.save_dir = bcast_str(save_dir, src=0)
+    # rank0만 결정/생성 후 브로드캐스트
+    save_dir = get_sampling_dir(config, rank=rank) if rank == 0 else None
+    save_dir = bcast_obj(save_dir, src=0)
+    config.save_dir = save_dir
     if rank == 0:
         save_config(config)
-    if dist.is_available() and dist.is_initialized():
-        dist.barrier()
+    barrier(local)
 
-    # build per-rank components
-    model  = get_model(config)           # assume model internally moves to correct device in its methods
+    # 컴포넌트
+    model  = get_model(config)
     Solver = get_solver(config)
     data   = get_data(config)
 
-    # Optional feature extractors per-rank
     inception = FIDInception().to(device) if config.inception else None
     clip      = CLIPEmbedder(device=device) if config.clip else None
 
-    # shard indices across ranks (global index -> file name "{index}.pt")
-    all_idx   = list(range(config.n_samples))
-    my_idx    = all_idx[rank::world_size]
+    # 샤딩 (글로벌 인덱스 유지)
+    all_idx = list(range(config.n_samples))
+    my_idx  = all_idx[rank::world]  # 각 랭크가 전역 인덱스 일부 담당
 
-    # simple per-rank progress
     n_iters = math.ceil(len(my_idx) / config.batch_size)
-    pbar = tqdm(total=n_iters, desc=f"Rank{rank} sampling", disable=(rank != 0))
+    pbar = tqdm(total=n_iters, desc=f"rank{rank}", disable=(rank != 0))
 
     torch.backends.cudnn.benchmark = True
     with torch.no_grad(), torch.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=torch.cuda.is_available()):
-        k = 0
-        while k < len(my_idx):
-            batch_indices = my_idx[k : k + config.batch_size]
-            k += config.batch_size
+        ptr = 0
+        while ptr < len(my_idx):
+            batch_indices = my_idx[ptr: ptr + config.batch_size]
+            ptr += config.batch_size
 
             conds = [data[i] for i in batch_indices]
-            seeds = config.seed_offset + np.asarray(batch_indices, dtype=int)
+            seeds = config.seed_offset + np.asarray(batch_indices, dtype=int)  # ✅ seed = offset + global_idx
 
             noise_schedule = model.get_noise_schedule()
             model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
@@ -157,6 +165,7 @@ def main():
 
             outputs = solver.sample(noises, model_fn, output_traj=config.output_traj)
             samples = outputs['samples']
+
             if config.inception or config.clip:
                 raw_outputs = model.decode_vae(samples, raw_output=True)
 
@@ -167,25 +176,26 @@ def main():
 
             samples_cpu = samples.detach().cpu() if config.sample else None
             noises_cpu  = noises.detach().cpu()  if config.output_noise else None
-            trajs_cpu   = outputs['trajs'].detach().cpu() if config.output_traj else None
+            trajs_t     = outputs.get('trajs', None)
+            trajs_cpu   = trajs_t.detach().cpu() if (trajs_t is not None and config.output_traj) else None
 
-            # save per global index
-            for j, index in enumerate(batch_indices):
+            for j, gidx in enumerate(batch_indices):
                 out = {'cond': conds[j]}
                 if config.sample:       out['sample'] = samples_cpu[j]
                 if config.inception:    out['inception_feature'] = inc_feats[j]
                 if config.clip:         out['clip_feature'] = clip_feats[j]
                 if config.output_noise: out['noise'] = noises_cpu[j]
                 if config.output_traj:  out['traj'] = trajs_cpu[j]
-                torch.save(out, os.path.join(config.save_dir, f"{index}.pt"))
+                torch.save(out, os.path.join(config.save_dir, f"{gidx}.pt"))
 
             pbar.update(1)
 
     pbar.close()
+    barrier(local)
+    if rank == 0:
+        print(f"Done. Saved to: {config.save_dir}", flush=True)
     if dist.is_available() and dist.is_initialized():
-        dist.barrier()
-        if rank == 0:
-            print(f"Done. Saved to: {config.save_dir}")
+        dist.destroy_process_group()
 
 if __name__ == '__main__':
     main()
