@@ -91,30 +91,43 @@ def save_config(config):
         json.dump(dict(config), f, indent=2)
 
 # ---------------------- DDP helpers (최소 추가) ----------------------
+from datetime import timedelta
+import torch.distributed as dist
+import torch
+
 def init_dist():
     world = int(os.environ.get("WORLD_SIZE", "1"))
     if world > 1:
         rank  = int(os.environ["RANK"])
         local = int(os.environ.get("LOCAL_RANK", rank % max(1, torch.cuda.device_count())))
         torch.cuda.set_device(local)
-        # device_id 인자가 없는 버전 대비 try/except
+        dev = torch.device(f"cuda:{local}")        # ✅ torch.device 로 변환
+
         try:
-            dist.init_process_group("nccl", init_method="env://",
-                                    timeout=timedelta(seconds=300),
-                                    device_id=local)
+            dist.init_process_group(
+                backend="nccl",
+                init_method="env://",
+                timeout=timedelta(seconds=300),
+                device_id=dev,                      # ✅ int 대신 torch.device
+            )
         except TypeError:
-            dist.init_process_group("nccl", init_method="env://",
-                                    timeout=timedelta(seconds=300))
+            # (구버전 호환) device_id 인자 없는 버전
+            dist.init_process_group(
+                backend="nccl",
+                init_method="env://",
+                timeout=timedelta(seconds=300),
+            )
         return rank, world, local
     return 0, 1, 0
 
-def barrier(local_rank):
+def barrier(local_rank: int):
     if dist.is_available() and dist.is_initialized():
+        dev = torch.device(f"cuda:{local_rank}") if torch.cuda.is_available() else torch.device("cpu")
         try:
-            dist.barrier(device_ids=[local_rank])
+            dist.barrier(device_ids=[dev])         # ✅ torch.device 리스트
         except TypeError:
             dist.barrier()
-
+            
 def bcast_obj(obj, src=0):
     if not (dist.is_available() and dist.is_initialized()):
         return obj
