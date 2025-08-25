@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -e
 export DPM_TQDM=False
-export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-3}
 
-for s in 7 9; do
+for s in 7 9 3 5; do
   for combo in p1c2; do
     case "$combo" in
       p1)   P=1; C=1; UC=0 ;;
@@ -14,7 +14,7 @@ for s in 7 9; do
       *) echo "unknown combo: $combo"; exit 1 ;;
     esac
 
-    LOG="logs/ablations/pred_corr/${combo}_s${s}_try0"
+    LOG="logs/ablations/pred_corr/${combo}_s${s}_try3"
 
     # 이미 로그 디렉토리가 있으면 스킵
     if [[ -d "$LOG" ]]; then
