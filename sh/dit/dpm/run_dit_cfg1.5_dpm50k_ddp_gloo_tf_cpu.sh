@@ -2,8 +2,8 @@
 set -e
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-#CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-CUDA_VISIBLE_DEVICES=0,1
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+#CUDA_VISIBLE_DEVICES=0,1
 
 # 🔇 torchrun OMP 배너 억제(사전에 지정)
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
@@ -37,7 +37,7 @@ for solver in "${SOLVERS[@]}"; do
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
-        -m runs.sample_ddp_gloo_tf \
+        -m runs.sample_ddp_gloo_tf_cpu \
           --tag "$TAG" \
           --model "$MODEL" \
           --solver "$solver" \
