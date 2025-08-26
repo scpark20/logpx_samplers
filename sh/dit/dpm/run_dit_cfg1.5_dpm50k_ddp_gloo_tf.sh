@@ -37,7 +37,7 @@ for solver in "${SOLVERS[@]}"; do
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
-        -m runs.sample_ddp_gloo \
+        -m runs.sample_ddp_gloo_tf \
           --tag "$TAG" \
           --model "$MODEL" \
           --solver "$solver" \
