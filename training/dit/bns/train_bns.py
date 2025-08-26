@@ -18,9 +18,9 @@ from tqdm import tqdm
 # CLI: 요청대로 세 가지만 제어
 # ===============================
 def get_args():
-    p = argparse.ArgumentParser(description="GDual training (only 3 overrides)")
+    p = argparse.ArgumentParser(description="BNS training (only 3 overrides)")
     p.add_argument('--n_steps',    type=int, default=3)
-    p.add_argument('--temperature',    type=float, default=1.0)
+
     p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
     return p.parse_args()
 
@@ -44,13 +44,12 @@ config.total_steps   = 20*1000+1        # 전체 학습 스텝
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
 config.log_dir       = args.log_dir or config.log_dir
-config.temperature   = args.temperature
 # -----------------------------
 
 # Loss
 config.classifier = EasyDict()
-config.losses = ['classifier']
-config.main_loss = 'classifier'
+config.losses = ['mse_loss']
+config.main_loss = 'mse_loss'
 
 os.makedirs(config.log_dir, exist_ok=True)
 
@@ -65,36 +64,20 @@ if config.backbone == 'DiT':
     model.set_freeze()
 device = model.device
 print(model)
-if 'classifier' in config.losses:
-    classifier = ViTClassifier().to(device)
 print('done')
 
 # ===============================
 # Solver / Optimizer / Scheduler
 # ===============================
-from solvers.taylor.solver.gdual_solver import GDual_Solver
-from solvers.taylor.transform.logaffine_transform import LogAffineTransform
-from solvers.taylor.extractor.table_extractor import Extractor
+from solvers.competing.bns.bns_solver import BNS_Solver
 
 noise_schedule = model.get_noise_schedule()
-extractor = Extractor(steps=config.n_steps)
-transform = LogAffineTransform(gamma_push=True, gamma_max=2, tau_offset=1, kappa_max=2, eps=1e-2)
-solver = GDual_Solver(
-    noise_schedule,
-    steps=config.n_steps,
-    transform=transform,
-    param_extractor=extractor,
-    skip_type="time_uniform",
-    pred_order=1,
-    corr_order=2,
-    order1_kappa=True,
-    order2_kappa=True,
-    use_corrector=True,
-    time_learning=True,
-    train_mode=True,
-    checkpoint=False
-).to(device)
-
+solver = BNS_Solver(noise_schedule,
+        config.n_steps,
+        skip_type=config.skip_type,
+        flow_shift=config.flow_shift,
+        algorithm_type=config.algorithm_type,
+        checkpoint=False).to(device)
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
 
 # ---- Scheduler: Pure Cosine ----
@@ -131,7 +114,7 @@ def save_checkpoint(global_step, save_dir, solver, optimizer):
     return step_path
 
 @torch.no_grad()
-def get_valid_loss(valid_noises, valid_conds, device, solver):
+def get_valid_loss(valid_loader, device, solver):
     solver.eval()
     losses = []
     start = 0
@@ -143,7 +126,7 @@ def get_valid_loss(valid_noises, valid_conds, device, solver):
         start += config.batch_size
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.no_grad():
-            latent_pred = solver.sample(noises, model_fn)['samples']
+            latent_pred = solver.sample(noises, model_fn)
             if 'classifier' in config.losses:
                 outputs = model.decode_vae(latent_pred, raw_output=True)
                 class_ids = conds.to(device, non_blocking=True).long()
@@ -204,14 +187,13 @@ def main():
     valid_noises = torch.randn(config.n_valid, *config.latent_size).to(device, non_blocking=True)
     valid_conds = torch.randint(0, 1000, size=(len(valid_noises),))
     while True:
+        if global_step >= config.total_steps:
+            break
+        global_step = do_train_loop(device, writer, solver, optimizer, global_step)
         loss = get_valid_loss(valid_noises, valid_conds, device, solver)
         writer.add_scalar('valid_loss', loss, global_step)
         save_checkpoint(global_step, config.log_dir, solver, optimizer) 
 
-        if global_step >= config.total_steps:
-            break
-        
-        global_step = do_train_loop(device, writer, solver, optimizer, global_step)
     print('E-N-D')
     
 if __name__ == "__main__":

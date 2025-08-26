@@ -13,6 +13,7 @@ class BNS_Solver(Solver):
         skip_type="time_uniform_flow",
         flow_shift=1.0,
         algorithm_type="dual_prediction",
+        checkpoint=False
     ):
         assert algorithm_type == 'dual_prediction'
         super().__init__(noise_schedule, algorithm_type)
@@ -20,6 +21,7 @@ class BNS_Solver(Solver):
         self.steps = steps
         self.skip_type = skip_type
         self.flow_shift = flow_shift
+        self.checkpoint = checkpoint
         
         t_0 = 1.0 / noise_schedule.total_N
         t_T = noise_schedule.T
@@ -29,26 +31,6 @@ class BNS_Solver(Solver):
         self.a = nn.Parameter(torch.ones(steps,))
         self.b = nn.Parameter(torch.ones(steps, steps))
         
-    def learned_timesteps(self, device=None, dtype=None):
-        """
-        log_deltas (length = steps)  ->  timesteps (length = steps+1, strictly decreasing)
-        anchors: t[0] = T, t[-1] = t_eps
-        """
-        if device is None: device = self.log_deltas.device
-        if dtype  is None: dtype  = self.log_deltas.dtype
-
-        T     = torch.as_tensor(self.noise_schedule.T, device=device, dtype=dtype)
-        t_eps = torch.as_tensor(1.0 / self.noise_schedule.total_N, device=device, dtype=dtype)
-
-        # 1) 양수 간격 + 총합 고정: softmax로 비율을 만들고 전체 스팬에 맞춤
-        w = F.softmax(self.log_deltas, dim=0)            # (S,)
-        deltas = (T - t_eps) * w                         # (S,), sum(deltas) = T - t_eps
-
-        # 2) 누적합으로 감소하는 시간축 복원
-        c = torch.cumsum(deltas, dim=0)                  # (S,)
-        ts = torch.cat([T[None], T - c], dim=0)          # (S+1,)
-        return ts
-    
     def sample(self, x, model_fn, **kwargs):
         self.set_model_fn(model_fn)
         
@@ -63,7 +45,7 @@ class BNS_Solver(Solver):
         x0 = x
         vs = []
         for i in tqdm(range(self.steps), disable=os.getenv("TQDM", "False")):
-            xc, ec = self.checkpoint_model_fn(x, timesteps[i])
+            xc, ec = self.checkpoint_model_fn(x, timesteps[i]) if self.checkpoint else self.model_fn(x, timesteps[i])
             vc = delta_alphas[i]*xc + delta_sigmas[i]*ec
             vs.append(vc)
 
