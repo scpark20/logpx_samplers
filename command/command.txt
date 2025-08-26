@@ -2,6 +2,7 @@
 git clone https://github.com/scpark20/logpx_samplers.git
 cd logpx_samplers
 git checkout scpark
+PREFER_SYSTEM_CUDNN=1 ./sh/install_tf_match_cudnn.sh
 pip install -r requirements.txt
 pip install git+https://github.com/openai/CLIP.git
 
@@ -13,6 +14,7 @@ scp -P 22223 scpark@220.117.157.23:/data/scpark/dataset/train4.0_10k.zip /datase
 # DiT
 mkdir -p /dataset/dit
 scp -P 22223 scpark@220.117.157.23:/data/scpark/dataset/dit/*.zip /dataset/dit
+scp -P 22223 scpark@220.117.157.23:/data/scpark/dataset/dit/stats.pt /dataset/dit
 
 # SANA
 mkdir -p /dataset/sana
