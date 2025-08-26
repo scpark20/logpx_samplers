@@ -31,7 +31,7 @@ args = get_args()
 # ===============================
 config = EasyDict()
 config.backbone      = 'DiT'
-config.batch_size    = 10
+config.batch_size    = 1
 config.CFG           = 1.5
 config.val_every     = 100
 config.latent_size   = (4, 32, 32)
@@ -92,7 +92,7 @@ solver = GDual_Solver(
     use_corrector=True,
     time_learning=True,
     train_mode=True,
-    checkpoint=True
+    checkpoint=False
 ).to(device)
 
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
