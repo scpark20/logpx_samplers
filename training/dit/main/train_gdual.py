@@ -127,44 +127,15 @@ def save_checkpoint(global_step, save_dir, solver, optimizer):
     torch.save(ckpt, step_path)
     return step_path
 
-@torch.no_grad()
-def get_valid_loss(device, solver):
-    solver.eval()
-    losses = {}
-    if 'classifier' in config.losses:
-        losses['classifier'] = []
-    
-    for _ in range(100):
-        noises = torch.randn(config.batch_size, *config.latent_size).to(device, non_blocking=True)
-        conds = torch.randint(0, 1000, size=(len(noises),))
-        model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
-        with torch.no_grad():
-            latent_pred = solver.sample(noises, model_fn)
-            if 'classifier' in config.losses:
-                outputs = model.decode_vae(latent_pred, raw_output=True)
-                class_ids = conds.to(device, non_blocking=True).long()
-                ce_loss = classifier(outputs['raw_output'], targets=class_ids)["loss"]
-                losses['classifier'].append(ce_loss.item())
-
-    for key in losses:
-        losses[key] = float(np.mean(losses[key]))
-    return losses
-
 from IPython.display import clear_output
 
 def do_train_loop(device, writer, solver, optimizer, global_step):
     solver.train()
     pbar = tqdm(range(100))
+    losses = []
     for _, batch in enumerate(pbar):
         if global_step >= config.total_steps:
             break
-
-        #if global_step > 0 and global_step % config.val_every == 0:
-        if global_step % config.val_every == 0:
-            valid_losses = get_valid_loss(device, solver)
-            for key in valid_losses:
-                writer.add_scalar(key, valid_losses[key], global_step)
-            save_checkpoint(global_step, config.log_dir, solver, optimizer)
 
         optimizer.zero_grad(set_to_none=True)
         if config.main_loss == 'classifier':
@@ -185,7 +156,7 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
                 loss = classifier(outputs['raw_output'], targets=class_ids)["loss"]
                 
         abort_if_bad("train", loss, global_step)  # ← 즉시 중단
-
+        losses.append(loss.item())
         loss.backward()
         torch.nn.utils.clip_grad_norm_(solver.parameters(), 1.0)
         optimizer.step()
@@ -195,6 +166,9 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
         global_step += 1
         
         clear_output()
+
+    writer.add_scalar('train_loss', np.mean(losses), global_step)
+    save_checkpoint(global_step, config.log_dir, solver, optimizer)
 
     return global_step
 
