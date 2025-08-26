@@ -46,7 +46,7 @@ class ViTClassifier(nn.Module):
         self.register_buffer("std",  torch.tensor(std).view(1,3,1,1))
         self.label_smoothing = float(label_smoothing)
 
-    def forward(self, x, targets=None, input_range="-1..1", clamp="ste"):
+    def forward(self, x, targets=None, input_range="-1..1", clamp="ste", T=1.0):
         p = next(self.m.parameters()); x = x.to(p.device)
         if x.shape[1] == 1: x = x.repeat(1,3,1,1)
         if input_range == "-1..1": x = (x + 1) * 0.5
@@ -62,7 +62,7 @@ class ViTClassifier(nn.Module):
         logits = self.m(x)  # torchvision ViT는 Tensor 반환
         out = {"logits": logits, "pred": logits.argmax(1)}
         if targets is not None:
-            out["loss"] = F.cross_entropy(logits.float(), targets.long(),
+            out["loss"] = F.cross_entropy(logits.float()/T, targets.long(),
                                           label_smoothing=self.label_smoothing)
         return out
 

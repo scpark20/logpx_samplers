@@ -4,6 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 from ...solver import Solver
+from ..transform.logaffine_transform import LogAffineTransform
+from ..extractor.table_extractor import Extractor
 from contextlib import nullcontext
 import numpy as np
 
@@ -12,8 +14,8 @@ class GDual_Solver(Solver):
         self,
         noise_schedule,
         steps,
-        transform,
-        param_extractor,
+        transform=None,
+        param_extractor=None,
         skip_type="time_uniform_flow",
         flow_shift=1.0,
         pred_order=1,
@@ -23,10 +25,11 @@ class GDual_Solver(Solver):
         time_learning=True,
         scale_learning=False,
         use_corrector=True,
-        order1_kappa=False,
-        order2_kappa=False,
+        order1_kappa=True,
+        order2_kappa=True,
         train_mode=False,
-        checkpoint=True,
+        checkpoint=False,
+        **kwargs
     ):
         super().__init__(noise_schedule, 'dual_prediction')
         assert pred_order <= 2 and corr_order <= 2
@@ -43,6 +46,11 @@ class GDual_Solver(Solver):
         self.use_corrector = use_corrector
         self.param_extractor = param_extractor
         self.transform = transform
+        if self.param_extractor is None:
+            self.param_extractor = Extractor(steps=steps)
+        if self.transform is None:
+            self.transform = LogAffineTransform(gamma_push=True, gamma_max=2, tau_offset=1, kappa_max=2, eps=1e-2)
+            
         self.train_mode = train_mode
         self.order1_kappa = order1_kappa
         self.order2_kappa = order2_kappa
@@ -118,7 +126,7 @@ class GDual_Solver(Solver):
         return out
 
     # ---------- sampling ----------
-    def sample(self, x, model_fn, inter_return=False, **kwargs):
+    def sample(self, x, model_fn, **kwargs):
         self.set_model_fn(model_fn)
 
         device, dtype = x.device, x.dtype
@@ -134,9 +142,6 @@ class GDual_Solver(Solver):
         log_alpha, log_sigma = torch.log(alphas), torch.log(sigmas)
         log_alpha_ratio, log_sigma_ratio = log_alpha[1:] - log_alpha[:-1], log_sigma[1:] - log_sigma[:-1]
 
-        if inter_return:
-            return_index = np.random.randint(0, self.steps)
-            inter = None
         
         # 초기 상태
         if self.scale_learning:
@@ -148,11 +153,10 @@ class GDual_Solver(Solver):
         with context:
             xc, ec = self.checkpoint_model_fn(x_pred, timesteps[0]) if self.train_mode and self.checkpoint else self.model_fn(x_pred, timesteps[0])
             params, hidden = self.param_extractor({'x':xc, 'e':ec, 't': timesteps[0:2], 'h': None, 'step': 0})
-            if inter_return and return_index == 0:
-                inter = xc
             
-            use_tqdm = os.getenv("DPM_TQDM", "1") not in ("0","False","false","")
-            for i in tqdm(range(self.steps), disable=not use_tqdm):
+            #use_tqdm = os.getenv("DPM_TQDM", "1") not in ("0","False","false","")
+            #for i in tqdm(range(self.steps), disable=not use_tqdm):
+            for i in range(self.steps):
                 pred_order = min(i + 1, self.steps - i, self.pred_order) if self.lower_order_final else min(i + 1, self.pred_order)
 
                 # Predictor
@@ -164,8 +168,6 @@ class GDual_Solver(Solver):
                 if i < self.steps - 1:
                     xn, en = self.checkpoint_model_fn(x_pred, timesteps[i+1]) if self.train_mode and self.checkpoint else self.model_fn(x_pred, timesteps[i+1]) 
                     params, hidden = self.param_extractor({'x':xn, 'e':en, 't': timesteps[i+1:i+3], 'h': hidden, 'step': i+1})
-                    if inter_return and return_index == i+1:
-                        inter = xn
                 else:
                     break
 
@@ -183,7 +185,5 @@ class GDual_Solver(Solver):
                 xp, ep = xc, ec
                 xc, ec = xn, en
 
-        if inter_return:
-            return x_pred, inter
-        else:
-            return x_pred
+        outputs = {'samples': x_pred}
+        return outputs

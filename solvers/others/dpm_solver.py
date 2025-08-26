@@ -26,10 +26,10 @@ class DPM_Solver(Solver):
     def __init__(
         self,
         noise_schedule,
-        n_steps,
-        order,
-        skip_type,
-        flow_shift,
+        steps,
+        order=2,
+        skip_type='time_uniform',
+        flow_shift=1.0,
         algorithm_type="data_prediction",
         correcting_x0_fn=None,
         correcting_xt_fn=None,
@@ -94,7 +94,7 @@ class DPM_Solver(Solver):
         """
         super().__init__(noise_schedule, algorithm_type)
 
-        self.n_steps = n_steps
+        self.steps = steps
         self.order = order
         self.skip_type = skip_type
         self.flow_shift = flow_shift
@@ -761,7 +761,7 @@ class DPM_Solver(Solver):
         **kwargs
     ):
         self.set_model_fn(model_fn)
-        steps = self.n_steps
+        steps = self.steps
         order = self.order
         skip_type = self.skip_type
         flow_shift = self.flow_shift

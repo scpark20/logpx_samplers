@@ -22,6 +22,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--order',           type=int,   default=2)
     parser.add_argument('--data',            type=str,   default='MSCOCO2017')
     parser.add_argument('--save_root',       type=str,   default='/data/scpark/samplings/')
+    parser.add_argument('--pt_dir',          type=str,   default=None)
+    parser.add_argument('--pt_criterion',          type=str,   default='train_loss')
     parser.add_argument('--n_samples',       type=int,   default=100)
     parser.add_argument('--batch_size',      type=int,   default=5)
     parser.add_argument('--output_noise',    action='store_true',  default=False)
@@ -65,7 +67,10 @@ def get_solver(config: EasyDict):
         return DPM_Solver
     if config.solver == 'UniPC':
         from solvers.others.unipc_solver import UniPC_Solver    
-        return UniPC_Solver    
+        return UniPC_Solver
+    if config.solver == 'Dual-Solver':
+        from solvers.taylor.solver.gdual_solver import GDual_Solver
+        return GDual_Solver
     raise ValueError(f"Unknown solver: {config.solver}")
 
 def get_data(config: EasyDict):
@@ -173,7 +178,12 @@ def main():
             noises = model.get_noise(seeds=seeds)
             solver = Solver(noise_schedule, config.NFE, order=config.order,
                             skip_type=config.skip_type, flow_shift=config.flow_shift,
-                            algorithm_type=config.algorithm_type)
+                            algorithm_type=config.algorithm_type).to(device)
+            if config.pt_dir is not None:
+                from utils.util import get_best_pt
+                best_pt = get_best_pt(config.pt_dir, config.pt_criterion)
+                state_dict = torch.load(best_pt, map_location='cpu', weights_only=False)['solver_state_dict']
+                solver.load_state_dict(state_dict, strict=True)
 
             outputs = solver.sample(noises, model_fn, output_traj=config.output_traj)
             if config.inception or config.clip:

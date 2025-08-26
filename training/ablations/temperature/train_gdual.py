@@ -20,6 +20,7 @@ from tqdm import tqdm
 def get_args():
     p = argparse.ArgumentParser(description="GDual training (only 3 overrides)")
     p.add_argument('--n_steps',    type=int, default=3)
+    p.add_argument('--temperature',    type=float, default=1.0)
     p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
     return p.parse_args()
 
@@ -38,11 +39,12 @@ config.latent_size   = (4, 32, 32)
 # LR & Scheduler
 config.base_lr       = 2e-3
 config.end_lr        = 1e-4
-config.total_steps   = 10*1000+1        # 전체 학습 스텝
+config.total_steps   = 20*1000+1        # 전체 학습 스텝
 
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
 config.log_dir       = args.log_dir or config.log_dir
+config.temperature   = args.temperature
 # -----------------------------
 
 # Loss
@@ -89,7 +91,8 @@ solver = GDual_Solver(
     order2_kappa=True,
     use_corrector=True,
     time_learning=True,
-    train_mode=True
+    train_mode=True,
+    #checkpoint=True
 ).to(device)
 
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
@@ -149,11 +152,11 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
 
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-            latent_pred = solver.sample(noises, model_fn)
+            latent_pred = solver.sample(noises, model_fn)['samples']
             if 'classifier' == config.main_loss:
                 outputs = model.decode_vae(latent_pred, raw_output=True)
                 class_ids = conds.to(device, non_blocking=True).long()
-                loss = classifier(outputs['raw_output'], targets=class_ids)["loss"]
+                loss = classifier(outputs['raw_output'], targets=class_ids, T=config.temperature)["loss"]
                 
         abort_if_bad("train", loss, global_step)  # ← 즉시 중단
         losses.append(loss.item())

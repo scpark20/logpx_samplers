@@ -9,7 +9,7 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=dpm
+TAG=dual
 MODEL=DiT
 DATA=ImageNet
 BATCH_SIZE=50          # GPU당 배치
@@ -19,7 +19,7 @@ ORDER=2
 N_SAMPLES=50000
 SEED_OFFSET=0
 
-SOLVERS=("DPM-Solver")
+SOLVERS=("Dual-Solver")
 NFES=(3 5 7 9)
 CFGS=(1.5)
 
@@ -33,6 +33,7 @@ for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do
     for cfg in "${CFGS[@]}"; do
       SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}"
+      PT_DIR="logs/dit/dual/s${nfe}"
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
@@ -47,6 +48,7 @@ for solver in "${SOLVERS[@]}"; do
           --order "$ORDER" \
           --data "$DATA" \
           --save_root "$SAVE_ROOT" \
+          --pt_dir "$PT_DIR" \
           --n_samples "$N_SAMPLES" \
           --seed_offset "$SEED_OFFSET" \
           --batch_size "$BATCH_SIZE" \
