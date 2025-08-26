@@ -51,20 +51,25 @@ class DiT(Backbone):
         self,
         latents: torch.Tensor,
         raw_output=False,
+        pil_output=True,
     ) -> Union[torch.Tensor, Image.Image]:
         """
         Decode latent tensor to image.
         """
+        outputs = {}
         with self.context:
             lat = (latents / self.pipe.vae.config.scaling_factor).to(self.dtype)
             samples = self.pipe.vae.decode(lat).sample
             if raw_output:
-                return samples
-                
-            samples = (samples / 2 + 0.5).clamp(0, 1)
-            samples = samples.cpu().permute(0, 2, 3, 1).float().numpy()
-            samples = self.pipe.numpy_to_pil(samples)
-            return samples
+                outputs['raw_output'] = samples
+
+            if pil_output:    
+                samples = (samples / 2 + 0.5).clamp(0, 1)
+                samples = samples.cpu().permute(0, 2, 3, 1).float().numpy()
+                samples = self.pipe.numpy_to_pil(samples)
+                outputs['pil_output'] = samples
+            return outputs
+            
 
     def get_noise_schedule(self):
         noise_schedule = NoiseScheduleVP(schedule="discrete", betas=self.pipe.scheduler.betas, dtype=self.dtype)

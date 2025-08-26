@@ -26,6 +26,10 @@ class DPM_Solver(Solver):
     def __init__(
         self,
         noise_schedule,
+        n_steps,
+        order,
+        skip_type,
+        flow_shift,
         algorithm_type="data_prediction",
         correcting_x0_fn=None,
         correcting_xt_fn=None,
@@ -89,8 +93,12 @@ class DPM_Solver(Solver):
             with deep language understanding. arXiv preprint arXiv:2205.11487, 2022b.
         """
         super().__init__(noise_schedule, algorithm_type)
-        # self.model = lambda x, t: model_fn(x, t.expand(x.shape[0]))
-        # self.noise_schedule = noise_schedule
+
+        self.n_steps = n_steps
+        self.order = order
+        self.skip_type = skip_type
+        self.flow_shift = flow_shift
+
         assert algorithm_type in ["noise_prediction", "data_prediction"]
         self.algorithm_type = algorithm_type
         if correcting_x0_fn == "dynamic_thresholding":
@@ -741,24 +749,22 @@ class DPM_Solver(Solver):
 
     def sample(
         self,
-        model_fn,
         x,
-        steps=20,
-        t_start=None,
-        t_end=None,
-        order=2,
-        skip_type="time_uniform",
+        model_fn,
         method="multistep",
         lower_order_final=True,
         denoise_to_zero=False,
         solver_type="dpmsolver",
         atol=0.0078,
         rtol=0.05,
-        return_intermediate=False,
-        flow_shift=1.0,
+        output_traj=False,
         **kwargs
     ):
         self.set_model_fn(model_fn)
+        steps = self.n_steps
+        order = self.order
+        skip_type = self.skip_type
+        flow_shift = self.flow_shift
         """
         Compute the sample at time `t_end` by DPM-Solver, given the initial `x` at time `t_start`.
 
@@ -867,12 +873,12 @@ class DPM_Solver(Solver):
             x_end: A pytorch tensor. The approximated solution at time `t_end`.
 
         """
-        t_0 = 1.0 / self.noise_schedule.total_N if t_end is None else t_end
-        t_T = self.noise_schedule.T if t_start is None else t_start
+        t_0 = 1.0 / self.noise_schedule.total_N
+        t_T = self.noise_schedule.T
         assert (
             t_0 > 0 and t_T > 0
         ), "Time range needs to be greater than 0. For discrete-time DPMs, it needs to be in [1 / N, 1], where N is the length of betas array"
-        if return_intermediate:
+        if output_traj:
             assert method in [
                 "multistep",
                 "singlestep",
@@ -905,7 +911,7 @@ class DPM_Solver(Solver):
                 model_prev_list = [self.model_fn(x, t)]
                 if self.correcting_xt_fn is not None:
                     x = self.correcting_xt_fn(x, t, step)
-                if return_intermediate:
+                if output_traj:
                     intermediates.append(x)
                 
                 # Init the first `order` values by lower order multistep DPM-Solver.
@@ -916,7 +922,7 @@ class DPM_Solver(Solver):
                     )
                     if self.correcting_xt_fn is not None:
                         x = self.correcting_xt_fn(x, t, step)
-                    if return_intermediate:
+                    if output_traj:
                         intermediates.append(x)
                     t_prev_list.append(t)
                     model_prev_list.append(self.model_fn(x, t))
@@ -936,7 +942,7 @@ class DPM_Solver(Solver):
                     )
                     if self.correcting_xt_fn is not None:
                         x = self.correcting_xt_fn(x, t, step)
-                    if return_intermediate:
+                    if output_traj:
                         intermediates.append(x)
                     for i in range(order - 1):
                         t_prev_list[i] = t_prev_list[i + 1]
@@ -970,7 +976,7 @@ class DPM_Solver(Solver):
                     x = self.singlestep_dpm_solver_update(x, s, t, order, solver_type=solver_type, r1=r1, r2=r2)
                     if self.correcting_xt_fn is not None:
                         x = self.correcting_xt_fn(x, t, step)
-                    if return_intermediate:
+                    if output_traj:
                         intermediates.append(x)
                     
             else:
@@ -980,10 +986,11 @@ class DPM_Solver(Solver):
                 x = self.denoise_to_zero_fn(x, t)
                 if self.correcting_xt_fn is not None:
                     x = self.correcting_xt_fn(x, t, step + 1)
-                if return_intermediate:
+                if output_traj:
                     intermediates.append(x)
-        if return_intermediate:
-            return x, intermediates
-        else:
-            return x
 
+        outputs = {'samples': x}
+        if output_traj:
+            outputs['trajs'] = intermediates
+
+        return outputs

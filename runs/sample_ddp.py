@@ -2,7 +2,7 @@
 import argparse, os, re, sys, json, math, torch, numpy as np
 from easydict import EasyDict
 from tqdm import tqdm
-from utils.inception import FIDInception
+from utils.fid import FIDInception
 from utils.clip import CLIPEmbedder
 import torch.distributed as dist
 from datetime import timedelta
@@ -167,7 +167,8 @@ def main():
     pbar = tqdm(total=n_iters, desc=f"Sampling(rank{rank})", disable=(rank != 0))
 
     torch.backends.cudnn.benchmark = True
-    with torch.no_grad(), torch.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=torch.cuda.is_available()):
+    #with torch.no_grad(), torch.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=torch.cuda.is_available()):
+    with torch.no_grad():
         ptr = 0
         while ptr < len(my_idx):
             batch_indices = my_idx[ptr: ptr + config.batch_size]
@@ -185,12 +186,11 @@ def main():
 
             outputs = solver.sample(noises, model_fn, output_traj=config.output_traj)
             if config.inception or config.clip:
-                raw_outputs = model.decode_vae(outputs['samples'], raw_output=True)
-
+                decoded = model.decode_vae(outputs['samples'], raw_output=True, pil_output=True)
             if config.inception:
-                inception_features = inception(raw_outputs, clamp_mode="hard").detach().cpu()
+                inception_features = inception(decoded['pil_output']).detach().cpu()
             if config.clip:
-                clip_features = clip.encode_image(raw_outputs).detach().cpu()
+                clip_features = clip.encode_image(decoded['raw_output']).detach().cpu()
 
             samples = outputs['samples'].detach().cpu()
             if config.output_noise:

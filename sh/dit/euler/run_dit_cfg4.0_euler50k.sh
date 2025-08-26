@@ -16,7 +16,7 @@ N_SAMPLES=50000
 SEED_OFFSET=0
 
 SOLVERS=("Euler")
-NFES=(3 5 7 9)
+NFES=(5 7 9)
 CFGS=(4.0)
 
 for solver in "${SOLVERS[@]}"; do
