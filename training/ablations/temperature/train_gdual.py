@@ -32,7 +32,7 @@ args = get_args()
 config = EasyDict()
 config.backbone      = 'DiT'
 config.batch_size    = 1
-config.n_valid       = 1000
+config.n_valid       = 100
 config.CFG           = 1.5
 config.latent_size   = (4, 32, 32)
 
