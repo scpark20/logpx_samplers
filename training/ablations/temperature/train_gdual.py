@@ -32,6 +32,7 @@ args = get_args()
 config = EasyDict()
 config.backbone      = 'DiT'
 config.batch_size    = 1
+config.n_valid       = 1000
 config.CFG           = 1.5
 config.latent_size   = (4, 32, 32)
 
@@ -129,12 +130,34 @@ def save_checkpoint(global_step, save_dir, solver, optimizer):
     torch.save(ckpt, step_path)
     return step_path
 
+@torch.no_grad()
+def get_valid_loss(valid_noises, valid_conds, device, solver):
+    solver.eval()
+    losses = []
+    start = 0
+    while True:
+        if start >= len(valid_noises):
+            break
+        noises = valid_noises[start:min(start+config.batch_size, len(valid_noises))]
+        conds = valid_conds[start:min(start+config.batch_size, len(valid_noises))]
+        start += config.batch_size
+        model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
+        with torch.no_grad():
+            latent_pred = solver.sample(noises, model_fn)
+            if 'classifier' in config.losses:
+                outputs = model.decode_vae(latent_pred, raw_output=True)
+                class_ids = conds.to(device, non_blocking=True).long()
+                loss = classifier(outputs['raw_output'], targets=class_ids, T=config.temperature)["loss"]
+                losses.append(loss.item())
+
+    return np.mean(losses)
+
 from IPython.display import clear_output
 
 def do_train_loop(device, writer, solver, optimizer, global_step):
     solver.train()
     pbar = tqdm(range(1000))
-    losses = []
+    
     for _, batch in enumerate(pbar):
         if global_step >= config.total_steps:
             break
@@ -143,12 +166,7 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
         if config.main_loss == 'classifier':
             noises = torch.randn(config.batch_size, *config.latent_size).to(device, non_blocking=True)
             conds = torch.randint(0, 1000, size=(len(noises),))
-        else:
-            noises = batch['noise'].to(device, non_blocking=True)
-            conds  = batch['cond']
-            targets= batch['sample'].to(device, non_blocking=True)
-            target_features = batch['inception_feature'][:, 0].to(device, non_blocking=True)
-
+        
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
             latent_pred = solver.sample(noises, model_fn)['samples']
@@ -158,7 +176,6 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
                 loss = classifier(outputs['raw_output'], targets=class_ids, T=config.temperature)["loss"]
                 
         abort_if_bad("train", loss, global_step)  # ← 즉시 중단
-        losses.append(loss.item())
         loss.backward()
         torch.nn.utils.clip_grad_norm_(solver.parameters(), 1.0)
         optimizer.step()
@@ -172,8 +189,6 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
     if global_step >= config.total_steps:
         return global_step
 
-    writer.add_scalar('train_loss', np.mean(losses), global_step)
-    save_checkpoint(global_step, config.log_dir, solver, optimizer)
 
     return global_step
 
@@ -186,10 +201,16 @@ def main():
     print('tensorboard:', config.log_dir)
 
     global_step = 0
+    valid_noises = torch.randn(config.n_valid, *config.latent_size).to(device, non_blocking=True)
+    valid_conds = torch.randint(0, 1000, size=(len(valid_noises),))
     while True:
         if global_step >= config.total_steps:
             break
         global_step = do_train_loop(device, writer, solver, optimizer, global_step)
+        loss = get_valid_loss(valid_noises, valid_conds, device, solver)
+        writer.add_scalar('valid_loss', loss, global_step)
+        save_checkpoint(global_step, config.log_dir, solver, optimizer) 
+
     print('E-N-D')
     
 if __name__ == "__main__":
