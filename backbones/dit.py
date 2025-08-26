@@ -50,8 +50,8 @@ class DiT(Backbone):
     def decode_vae(
         self,
         latents: torch.Tensor,
-        raw_output=False,
-        pil_output=True,
+        raw_output=True,
+        pil_output=False,
     ) -> Union[torch.Tensor, Image.Image]:
         """
         Decode latent tensor to image.
@@ -65,7 +65,7 @@ class DiT(Backbone):
 
             if pil_output:    
                 samples = (samples / 2 + 0.5).clamp(0, 1)
-                samples = samples.cpu().permute(0, 2, 3, 1).float().numpy()
+                samples = samples.cpu().permute(0, 2, 3, 1).float().detach().numpy()
                 samples = self.pipe.numpy_to_pil(samples)
                 outputs['pil_output'] = samples
             return outputs
