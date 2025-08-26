@@ -33,7 +33,6 @@ config = EasyDict()
 config.backbone      = 'DiT'
 config.batch_size    = 1
 config.CFG           = 1.5
-config.val_every     = 100
 config.latent_size   = (4, 32, 32)
 
 # LR & Scheduler
@@ -134,7 +133,7 @@ from IPython.display import clear_output
 
 def do_train_loop(device, writer, solver, optimizer, global_step):
     solver.train()
-    pbar = tqdm(range(100))
+    pbar = tqdm(range(1000))
     losses = []
     for _, batch in enumerate(pbar):
         if global_step >= config.total_steps:
