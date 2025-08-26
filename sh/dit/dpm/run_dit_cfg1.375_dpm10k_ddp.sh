@@ -5,6 +5,11 @@ set -e
 #CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 CUDA_VISIBLE_DEVICES=0,1
 
+# 🔇 torchrun OMP 배너 억제(사전에 지정)
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
+export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
+export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
+
 TAG=dit_dpm10k_1.375
 SAVE_ROOT=samplings/dit/dpm10k_1.375
 MODEL=DiT
@@ -17,7 +22,7 @@ N_SAMPLES=10000
 SEED_OFFSET=0
 
 SOLVERS=("DPM-Solver")
-NFES=(5 7 9)
+NFES=(3)
 CFGS=(1.375)
 
 # 사용 GPU 개수 -> nproc

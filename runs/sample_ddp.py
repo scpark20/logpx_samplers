@@ -135,6 +135,10 @@ def bcast_obj(obj, src=0):
     dist.broadcast_object_list(box, src=src)
     return box[0]
 
+# 공통 헬퍼
+def compact(t, dtype=torch.float32):
+    return t.detach().to(dtype).clone().cpu()
+
 # ---------------------- main ----------------------
 def main():
     config = parse_args()
@@ -204,15 +208,15 @@ def main():
             for j, gidx in enumerate(batch_indices):
                 output = {'cond': conds[j]}
                 if config.sample:
-                    output['sample'] = samples[j]
+                    output['sample'] = compact(samples[j])
                 if config.inception:
-                    output['inception_feature'] = inception_features[j]
+                    output['inception_feature'] = compact(inception_features[j])
                 if config.clip:
-                    output['clip_feature'] = clip_features[j]
+                    output['clip_feature'] = compact(clip_features[j])
                 if config.output_noise:
-                    output['noise'] = noises[j]
+                    output['noise'] = compact(noises[j])
                 if config.output_traj and trajs is not None:
-                    output['traj'] = trajs[j]
+                    output['traj'] = compact(trajs[j])
                 torch.save(output, os.path.join(config.save_dir, f"{gidx}.pt"))
 
             pbar.update(1)

@@ -5,15 +5,15 @@ set -e
 #CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 CUDA_VISIBLE_DEVICES=0,1
 
-TAG=dit_dpm50k_1.375
-SAVE_ROOT=samplings/dit/dpm50k_1.375
+TAG=dit_dpm10k_1.375_auto
+SAVE_ROOT=samplings/dit/dpm10k_1.375_auto
 MODEL=DiT
 DATA=ImageNet
 BATCH_SIZE=50          # GPU당 배치
 ALGO=data_prediction
 SKIP=time_uniform
 ORDER=2
-N_SAMPLES=50000
+N_SAMPLES=10000
 SEED_OFFSET=0
 
 SOLVERS=("DPM-Solver")
@@ -30,7 +30,7 @@ for solver in "${SOLVERS[@]}"; do
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       torchrun --standalone --nproc_per_node="${NPROC}" \
-        -m runs.sample_ddp \
+        -m runs.sample_ddp_auto \
           --tag "$TAG" \
           --model "$MODEL" \
           --solver "$solver" \
