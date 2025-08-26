@@ -3,7 +3,7 @@ set -euo pipefail
 export DPM_TQDM=${DPM_TQDM:-False}
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 
-STEPS=(7 5)
+STEPS=(9 3)
 TEMPS=(1.0)
 
 for s in "${STEPS[@]}"; do
