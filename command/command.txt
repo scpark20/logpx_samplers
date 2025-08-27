@@ -1,10 +1,14 @@
+NVIDIA KILL ALL
+sudo kill -9 $(nvidia-smi --query-compute-apps=pid --format=csv,noheader)
+
 0. git clone
 git clone https://github.com/scpark20/logpx_samplers.git
 cd logpx_samplers
 git checkout scpark
-PREFER_SYSTEM_CUDNN=1 ./sh/install_tf_match_cudnn.sh
 pip install -r requirements.txt
 pip install git+https://github.com/openai/CLIP.git
+
+#PREFER_SYSTEM_CUDNN=1 ./sh/install_tf_match_cudnn.sh
 
 1. 데이터셋 받기
 mkdir /dataset
@@ -36,6 +40,7 @@ http://localhost:6006
 zip -r 0817.zip logs
 
 5. logs 보내기
+scp -P 22223 0826.zip scpark@220.117.157.23:/data/scpark/logs
 scp -P 22223 0823-2.zip scpark@220.117.157.23:/data/scpark/logs
 scp -P 22223 0823-1.zip scpark@220.117.157.23:/data/scpark/logs
 scp -P 22223 0818.zip scpark@220.117.157.23:/data/scpark/logs
@@ -44,7 +49,13 @@ scp -r -P 22223 ./'0818-19:SANA,CLIP' scpark@220.117.157.23:/data/scpark/logs/sa
 scp -r -P 22223 ./'0820-13:SANA,CLIP,6steps,p1c1' scpark@220.117.157.23:/data/scpark/logs/sana
 scp -r -P 22223 ./sana scpark@220.117.157.23:/data/scpark/logs
 
+5.5 logs 받기
+scp -P 22223 scpark@220.117.157.23:/data/scpark/logs/0826.zip .
+
 6. dataset 보내기
 scp -P 22223 1.6B_1024px_valid4.5.zip scpark@220.117.157.23:/data/scpark/dataset/sana
 scp -P 22223 sana_valid4.5.zip scpark@220.117.157.23:/data/scpark/dataset
 scp -P 22223 valid4.5.zip scpark@220.117.157.23:/data/scpark/dataset/sana
+
+7. stats 받기
+scp -P 22223 scpark@220.117.157.23:/dataset/dit/stats.pt /dataset/dit/
