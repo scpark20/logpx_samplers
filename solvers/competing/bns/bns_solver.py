@@ -53,4 +53,5 @@ class BNS_Solver(Solver):
             for j in range(0, i+1):
                 x = x + vs[j] * self.b[i, j]
             
-        return x
+        outputs = {'samples': x}
+        return outputs

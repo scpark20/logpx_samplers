@@ -50,7 +50,8 @@ for solver in "${SOLVERS[@]}"; do
           --n_samples "$N_SAMPLES" \
           --seed_offset "$SEED_OFFSET" \
           --batch_size "$BATCH_SIZE" \
-          --output_noise
+          --output_noise \
+          --output_sample
     done
   done
 done

@@ -28,9 +28,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--batch_size',      type=int,   default=5)
     parser.add_argument('--output_noise',    action='store_true',  default=False)
     parser.add_argument('--output_traj',     action='store_true',  default=False)
-    parser.add_argument('--inception',       action='store_true',  default=False)
-    parser.add_argument('--sample',          action='store_true',  default=False)
-    parser.add_argument('--clip',            action='store_true',  default=False)
+    parser.add_argument('--output_inception',       action='store_true',  default=False)
+    parser.add_argument('--output_sample',          action='store_true',  default=False)
+    parser.add_argument('--output_clip',            action='store_true',  default=False)
     parser.add_argument('--seed_offset',     type=int,   default=0)
     return parser
 
@@ -150,9 +150,9 @@ def main():
     model  = get_model(config)
     Solver = get_solver(config)
     data   = get_data(config)
-    if config.inception:
+    if config.output_inception:
         inception = FIDInception().to(device)
-    if config.clip:
+    if config.output_clip:
         clip = CLIPEmbedder(device=getattr(model, "device", device))
 
     # 전역 인덱스 샤딩 (seed = seed_offset + global_idx 유지)
@@ -186,11 +186,11 @@ def main():
                 solver.load_state_dict(state_dict, strict=True)
 
             outputs = solver.sample(noises, model_fn, output_traj=config.output_traj)
-            if config.inception or config.clip:
+            if config.output_inception or config.output_clip:
                 decoded = model.decode_vae(outputs['samples'], raw_output=True, pil_output=True)
-            if config.inception:
+            if config.output_inception:
                 inception_features = inception(decoded['pil_output']).detach().cpu()
-            if config.clip:
+            if config.output_clip:
                 clip_features = clip.encode_image(decoded['raw_output']).detach().cpu()
 
             samples = outputs['samples'].detach().cpu()
@@ -204,11 +204,11 @@ def main():
             # 글로벌 인덱스로 저장 (충돌 없음)
             for j, gidx in enumerate(batch_indices):
                 output = {'cond': conds[j]}
-                if config.sample:
+                if config.output_sample:
                     output['sample'] = compact(samples[j])
-                if config.inception:
+                if config.output_inception:
                     output['inception_feature'] = compact(inception_features[j])
-                if config.clip:
+                if config.output_clip:
                     output['clip_feature'] = compact(clip_features[j])
                 if config.output_noise:
                     output['noise'] = compact(noises[j])
