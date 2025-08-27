@@ -64,5 +64,6 @@ class Euler_Solver(Solver):
         outputs = {'samples': x_t}
         if output_traj:            
             outputs['trajs'] = torch.stack(trajs, dim=1)
+            outputs['timesteps'] = timesteps.detach().cpu()
 
         return outputs

@@ -29,7 +29,7 @@ class DS_Solver(Solver):
         self.log_deltas = nn.Parameter(torch.log(timesteps[:-1] - timesteps[1:]))
         self.M = nn.Parameter(torch.zeros(steps, steps))
         
-    def sample(self, x, model_fn, **kwargs):
+    def sample(self, x, model_fn, output_traj=False, **kwargs):
         self.set_model_fn(model_fn)
         
         device, dtype = x.device, x.dtype
@@ -41,6 +41,7 @@ class DS_Solver(Solver):
         delta_sigmas = sigmas[1:] - sigmas[:-1]
         
         vs = []
+        trajs = [x]
         for i in tqdm(range(self.steps), disable=os.getenv("TQDM", "False")):
             xc, ec = self.checkpoint_model_fn(x, timesteps[i]) if self.checkpoint else self.model_fn(x, timesteps[i])
             vc = delta_alphas[i]*xc + delta_sigmas[i]*ec
@@ -58,6 +59,11 @@ class DS_Solver(Solver):
                 V = torch.stack(vs, dim=0) # (N, b, c, h, w)
                 x = x + c_diag*vc + torch.sum(C[:, None, None, None, None]*V, dim=0)
             vs.append(vc)
+            if output_traj:
+                trajs.append(x)    
 
         outputs = {'samples': x}
+        if output_traj:
+            outputs['trajs'] = torch.stack(trajs, dim=1)
+
         return outputs

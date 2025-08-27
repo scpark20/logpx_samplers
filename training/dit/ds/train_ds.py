@@ -43,7 +43,7 @@ config.total_steps   = 20*1000+1        # 전체 학습 스텝
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
 config.log_dir       = args.log_dir or config.log_dir
-config.train_pt_dir  = '/dataset/dit/train1.5_1k'
+config.train_pt_dir  = '/dataset/dit/train1.5_1k_traj'
 config.valid_pt_dir  = '/dataset/dit/valid1.5_100'
 # -----------------------------
 
@@ -154,7 +154,7 @@ def do_train_loop(device, train_loader, solver, optimizer, global_step):
         optimizer.zero_grad(set_to_none=True)
         noises  = batch['noise'].to(device, non_blocking=True)
         conds   = batch['cond']
-        targets = batch['sample'].to(device, non_blocking=True)        
+        targets = batch['sample'].to(device, non_blocking=True)
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
             latent_pred = solver.sample(noises, model_fn)['samples']

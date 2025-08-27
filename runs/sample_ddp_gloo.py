@@ -198,9 +198,8 @@ def main():
                 noises = noises.detach().cpu()
             if config.output_traj and 'trajs' in outputs:
                 trajs = outputs['trajs'].detach().cpu()
-            else:
-                trajs = None
-
+                timesteps = outputs['timesteps'].detach().cpu()
+            
             # 글로벌 인덱스로 저장 (충돌 없음)
             for j, gidx in enumerate(batch_indices):
                 output = {'cond': conds[j]}
@@ -214,6 +213,7 @@ def main():
                     output['noise'] = compact(noises[j])
                 if config.output_traj and trajs is not None:
                     output['traj'] = compact(trajs[j])
+                    output['timesteps'] = compact(timesteps)
                 torch.save(output, os.path.join(config.save_dir, f"{gidx}.pt"))
 
             pbar.update(1)

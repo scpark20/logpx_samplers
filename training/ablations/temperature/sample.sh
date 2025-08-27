@@ -13,7 +13,7 @@ TAG=temperature
 MODEL=DiT
 DATA=ImageNet
 BATCH_SIZE=50          # GPU당 배치
-ALGO=data_prediction
+ALGO=dual_prediction
 SKIP=time_uniform
 ORDER=2
 N_SAMPLES=10000
@@ -30,12 +30,12 @@ NPROC=${#_GPU_IDS[@]}
 
 BASE_OUT="samplings"   # SAVE_ROOT의 베이스
 
-for temperature in "${TEMPS[@]}"; do
-  for solver in "${SOLVERS[@]}"; do
+for solver in "${SOLVERS[@]}"; do
+  for cfg in "${CFGS[@]}"; do
     for nfe in "${NFES[@]}"; do
-      for cfg in "${CFGS[@]}"; do
-        SAVE_ROOT="${BASE_OUT}/${MODEL}/cfg${cfg}_s${nfe}_t${temperature}_N${N_SAMPLES}"
-        PT_DIR="logs/ablations/temperature/dual/s${nfe}_t${temperature}"
+      for temperature in "${TEMPS[@]}"; do
+        SAVE_ROOT="${BASE_OUT}/${MODEL}/ablations/temperature/cfg${cfg}_s${nfe}_t${temperature}_N${N_SAMPLES}"
+        PT_DIR="logs/ablations/temperature/s${nfe}_t${temperature}"
 
         echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg} | TEMP=${temperature}"
 
@@ -58,7 +58,7 @@ for temperature in "${TEMPS[@]}"; do
             --n_samples "$N_SAMPLES" \
             --seed_offset "$SEED_OFFSET" \
             --batch_size "$BATCH_SIZE" \
-            --inception
+            --output_inception
       done
     done
   done
