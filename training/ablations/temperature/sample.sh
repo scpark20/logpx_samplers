@@ -54,6 +54,7 @@ for temperature in "${TEMPS[@]}"; do
             --data "$DATA" \
             --save_root "$SAVE_ROOT" \
             --pt_dir "$PT_DIR" \
+            --pt_criterion "valid_loss" \
             --n_samples "$N_SAMPLES" \
             --seed_offset "$SEED_OFFSET" \
             --batch_size "$BATCH_SIZE" \
