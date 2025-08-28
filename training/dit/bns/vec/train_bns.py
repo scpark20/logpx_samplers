@@ -20,6 +20,7 @@ from tqdm import tqdm
 def get_args():
     p = argparse.ArgumentParser(description="BNS training (only 3 overrides)")
     p.add_argument('--n_steps',    type=int, default=3)
+    p.add_argument('--k',          type=float, default=0.1)
     p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
     return p.parse_args()
 
@@ -42,6 +43,7 @@ config.total_steps   = 10*1000        # 전체 학습 스텝
 
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
+config.k             = args.k
 config.log_dir       = args.log_dir or config.log_dir
 config.train_pt_dir  = '/dataset/dit/train1.5_1k'
 config.valid_pt_dir  = '/dataset/dit/valid1.5_100'
@@ -77,6 +79,7 @@ solver = BNS_Solver(noise_schedule,
         skip_type='time_uniform',
         flow_shift=1.0,
         algorithm_type='dual_prediction',
+        k=config.k,
         checkpoint=True).to(device)
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
 

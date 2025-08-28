@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export DPM_TQDM=${DPM_TQDM:-False}
-export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-1}
+export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-2}
 
 STEPS=(3 5 7 9)
-KS=(0.2)
+KS=(0.5)
 
 for s in "${STEPS[@]}"; do
   for k in "${KS[@]}"; do

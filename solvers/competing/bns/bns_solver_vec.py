@@ -39,6 +39,7 @@ class BNS_Solver(Solver):
         
         device, dtype = x.device, x.dtype
         timesteps = self.learned_timesteps(device=device, dtype=dtype)  # <-- 학습된 ts
+        step_dt = timesteps[:-1] - timesteps[1:]
         dalphas = self.noise_schedule.dalpha(timesteps, dt=self.k/self.steps)
         dsigmas = self.noise_schedule.dsigma(timesteps, dt=self.k/self.steps)
 
@@ -46,7 +47,7 @@ class BNS_Solver(Solver):
         vs = []
         for i in tqdm(range(self.steps), disable=os.getenv("TQDM", "False")):
             xc, ec = self.checkpoint_model_fn(x, timesteps[i]) if self.checkpoint else self.model_fn(x, timesteps[i])
-            vc = dalphas[i]*xc + dsigmas[i]*ec
+            vc = (dalphas[i]*xc + dsigmas[i]*ec) * step_dt[i]
             vs.append(vc)
 
             x = x0 * self.a[i]
