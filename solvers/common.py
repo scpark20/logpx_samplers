@@ -211,14 +211,14 @@ class NoiseScheduleVP:
     #     sigma = torch.sqrt(torch.clamp(1.0 - torch.exp(2*loga), min=0.0))
     #     return - (alpha**2 / torch.clamp(sigma, min=1e-12)) * dloga_dt
 
-    def dalpha(self, t, dt=1e-2):
-        dt = -dt
-        num = self.marginal_alpha(t[:-1]+dt) - self.marginal_alpha(t[:-1])
+    def dalpha(self, t, k=1.):
+        dt = (t[1:] - t[:-1]) * k
+        num = self.marginal_alpha(t[:-1] + dt) - self.marginal_alpha(t[:-1])
         return num / dt
 
-    def dsigma(self, t, dt=1e-2):
-        dt = -dt
-        num = self.marginal_std(t[:-1]+dt) - self.marginal_std(t[:-1])
+    def dsigma(self, t, k=1.):
+        dt = (t[1:] - t[:-1]) * k
+        num = self.marginal_std(t[:-1] + dt) - self.marginal_std(t[:-1])
         return num / dt
 
     def marginal_alpha(self, t):

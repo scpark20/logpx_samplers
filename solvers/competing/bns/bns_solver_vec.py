@@ -40,8 +40,8 @@ class BNS_Solver(Solver):
         device, dtype = x.device, x.dtype
         timesteps = self.learned_timesteps(device=device, dtype=dtype)  # <-- 학습된 ts
         step_dt = timesteps[:-1] - timesteps[1:]
-        dalphas = self.noise_schedule.dalpha(timesteps, dt=self.k/self.steps)
-        dsigmas = self.noise_schedule.dsigma(timesteps, dt=self.k/self.steps)
+        dalphas = self.noise_schedule.dalpha(timesteps, k=self.k)
+        dsigmas = self.noise_schedule.dsigma(timesteps, k=self.k)
 
         x0 = x
         vs = []
