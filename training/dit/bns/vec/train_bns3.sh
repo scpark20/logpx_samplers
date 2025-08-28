@@ -4,7 +4,7 @@ export DPM_TQDM=${DPM_TQDM:-False}
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-3}
 
 STEPS=(3 5 7 9)
-KS=(1.0)
+KS=(0.8)
 
 for s in "${STEPS[@]}"; do
   for k in "${KS[@]}"; do
