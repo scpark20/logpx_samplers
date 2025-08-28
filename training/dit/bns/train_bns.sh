@@ -17,7 +17,7 @@ for s in "${STEPS[@]}"; do
   echo ">>> n_steps=${s} -> ${LOG}"
   mkdir -p "$LOG"
 
-  python -m training.dit.bns.vec.train_bns \
+  python -m training.dit.bns.train_bns \
     --n_steps "$s" \
     --log_dir "$LOG"
 done
