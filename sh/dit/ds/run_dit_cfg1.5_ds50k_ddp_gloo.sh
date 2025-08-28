@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -e
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-#export CUDA_VISIBLE_DEVICES=$(python -c 'import torch;print(",".join(map(str, range(torch.cuda.device_count()))))')
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=$(python -c 'import torch;print(",".join(map(str, range(torch.cuda.device_count()))))')
 
-# 🔇 BLAS/OMP 배너 억제(사전에 지정)
+# 🔇 torchrun OMP 배너 억제(사전에 지정)
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=clip
+TAG=ds
 MODEL=DiT
 DATA=ImageNet
 BATCH_SIZE=50          # GPU당 배치
@@ -20,8 +19,8 @@ ORDER=2
 N_SAMPLES=50000
 SEED_OFFSET=0
 
-SOLVERS=("Dual-Solver")
-NFES=(3 5)
+SOLVERS=("DS-Solver")
+NFES=(3 5 7 9)
 CFGS=(1.5)
 
 # 사용 GPU 개수 -> nproc
@@ -31,16 +30,13 @@ NPROC=${#_GPU_IDS[@]}
 BASE_OUT="samplings"   # SAVE_ROOT의 베이스
 
 for solver in "${SOLVERS[@]}"; do
-  for cfg in "${CFGS[@]}"; do
-    for nfe in "${NFES[@]}"; do
-      SAVE_ROOT="${BASE_OUT}/${MODEL}/ablations/clip/cfg${cfg}_s${nfe}_N${N_SAMPLES}"
-      PT_DIR="logs/ablations/clip/s${nfe}"
-
+  for nfe in "${NFES[@]}"; do
+    for cfg in "${CFGS[@]}"; do
+      SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}"
+      PT_DIR="logs/dit/ds/s${nfe}"
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
-
-      CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES}" \
-      DIST_BACKEND=gloo \
-      torchrun --standalone --nproc_per_node="${NPROC}" \
+      CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
+      DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
         -m runs.sample_ddp_gloo \
           --tag "$TAG" \
           --model "$MODEL" \

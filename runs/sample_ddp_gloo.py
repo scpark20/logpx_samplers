@@ -74,6 +74,9 @@ def get_solver(config: EasyDict):
     if config.solver == 'BNS-Solver':
         from solvers.competing.bns.bns_solver import BNS_Solver
         return BNS_Solver
+    if config.solver == 'DS-Solver':
+        from solvers.competing.ds.ds_solver import DS_Solver
+        return DS_Solver
     raise ValueError(f"Unknown solver: {config.solver}")
 
 def get_data(config: EasyDict):

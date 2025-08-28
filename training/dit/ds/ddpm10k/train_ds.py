@@ -30,7 +30,7 @@ args = get_args()
 # ===============================
 config = EasyDict()
 config.backbone      = 'DiT'
-config.batch_size    = 30
+config.batch_size    = 10
 config.n_valid       = 100
 config.CFG           = 1.5
 config.latent_size   = (4, 32, 32)
@@ -38,19 +38,19 @@ config.latent_size   = (4, 32, 32)
 # LR & Scheduler
 config.base_lr       = 2e-3
 config.end_lr        = 1e-4
-config.total_steps   = 20*1000+1        # 전체 학습 스텝
+config.total_steps   = 20*1000        # 전체 학습 스텝
 
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
 config.log_dir       = args.log_dir or config.log_dir
-config.train_pt_dir  = '/dataset/dit/train1.5_1k_traj'
+config.train_pt_dir  = '/dataset/dit/train1.5_10k_traj'
 config.valid_pt_dir  = '/dataset/dit/valid1.5_100'
 # -----------------------------
 
 # Loss
 config.classifier = EasyDict()
-config.losses = ['mse_loss']
-config.main_loss = 'mse_loss'
+config.valid_losses = ['mse_loss']
+config.main_loss = 'traj_loss'
 
 os.makedirs(config.log_dir, exist_ok=True)
 
@@ -69,7 +69,7 @@ print('done')
 # ===============================
 # Solver / Optimizer / Scheduler
 # ===============================
-from solvers.competing.ds.ds_solver import DS_Solver
+from solvers.competing.ds.ds_solver_ddpm import DS_Solver
 
 noise_schedule = model.get_noise_schedule()
 solver = DS_Solver(noise_schedule,
@@ -131,17 +131,32 @@ def save_checkpoint(global_step, save_dir, solver, optimizer):
 @torch.no_grad()
 def get_valid_loss(valid_loader, device, solver):
     solver.eval()
-    losses = []
+    rets = {}
+    for key in config.valid_losses:
+        rets[key] = []
     for batch in valid_loader:
         noises  = batch['noise'].to(device, non_blocking=True)
         conds   = batch['cond']
         targets = batch['sample'].to(device, non_blocking=True)
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
+
         with torch.no_grad():
             latent_pred = solver.sample(noises, model_fn)['samples']
-            loss = torch.log(F.mse_loss(latent_pred, targets))
-            losses.append(loss.item())
-    return np.mean(losses)
+            if 'mse_loss' in config.valid_losses:
+                loss = F.mse_loss(latent_pred, targets)
+                rets['mse_loss'].append(loss.item())
+
+    for key in rets:
+        rets[key] = np.mean(rets[key])
+
+    return rets
+
+def interp_traj(X, t, s):
+    # X:(B,L,C,H,W), t,s: (L,),(M,) — 둘 다 내림차순(1→0) 가정
+    t, s = t.to(X.device), s.to(X.device)
+    i1 = torch.bucketize(-s, -t).clamp(1, t.numel()-1); i0 = i1 - 1
+    w  = ((s - t[i0]) / (t[i1] - t[i0])).to(X.dtype).view(1, -1, 1, 1, 1)
+    return torch.lerp(X[:, i0], X[:, i1], w)
 
 def do_train_loop(device, train_loader, solver, optimizer, global_step):
     solver.train()
@@ -154,11 +169,19 @@ def do_train_loop(device, train_loader, solver, optimizer, global_step):
         optimizer.zero_grad(set_to_none=True)
         noises  = batch['noise'].to(device, non_blocking=True)
         conds   = batch['cond']
-        targets = batch['sample'].to(device, non_blocking=True)
+        #targets = batch['sample'].to(device, non_blocking=True)
+        teacher_traj = batch['traj'].to(device, non_blocking=True)
+        teacher_timesteps = batch['timesteps'][0].to(device, non_blocking=True)
+
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-            latent_pred = solver.sample(noises, model_fn)['samples']
-            loss = torch.log(F.mse_loss(latent_pred, targets))
+            outputs = solver.sample(noises, model_fn, output_traj=True)
+            
+        if config.main_loss == 'traj_loss':
+            target_traj = interp_traj(teacher_traj, teacher_timesteps, outputs['timesteps'])
+            mse_loss = F.mse_loss(target_traj, outputs['traj'])
+            huber_loss = F.huber_loss(teacher_traj[:, -1], outputs['traj'][:, -1], delta=1e-3) * 1000.0
+            loss = mse_loss + huber_loss
                 
         abort_if_bad("train", loss, global_step)  # ← 즉시 중단
         loss.backward()
@@ -188,7 +211,8 @@ def main():
             break
         global_step = do_train_loop(device, train_loader, solver, optimizer, global_step)
         loss = get_valid_loss(valid_loader, device, solver)
-        writer.add_scalar('valid_loss', loss, global_step)
+        for key in loss:
+            writer.add_scalar(key, loss[key], global_step)
         save_checkpoint(global_step, config.log_dir, solver, optimizer) 
 
     print('E-N-D')

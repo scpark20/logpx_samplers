@@ -19,13 +19,13 @@ import os
 
 import torch
 from tqdm import tqdm
+import torch.nn.functional as F
 
 # from .nets.sana_blocks import (
 #     PAGCFGIdentitySelfAttnProcessorLiteLA,
 #     PAGIdentitySelfAttnProcessorLiteLA,
 #     SelfAttnProcessorLiteLA,
 # )
-
 
 class NoiseScheduleVP:
     def __init__(
@@ -135,9 +135,9 @@ class NoiseScheduleVP:
                     )
                 )
                 .to(dtype=dtype)
-            )
-            self.total_N = self.log_alpha_array.shape[1]
-            self.t_array = torch.linspace(0.0, 1.0, self.total_N + 1)[1:].reshape((1, -1)).to(dtype=dtype)
+            ) # (1, 1000)
+            self.total_N = self.log_alpha_array.shape[1] # 1000
+            self.t_array = torch.linspace(0.0, 1.0, self.total_N + 1)[1:].reshape((1, -1)).to(dtype=dtype) # [0.001, ..., 1.000]
         else:
             self.T = 1.0
             self.total_N = 1000
@@ -167,7 +167,6 @@ class NoiseScheduleVP:
         elif self.schedule == "linear":
             return -0.25 * t**2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
     
-
     # def marginal_log_mean_coeff(self, t):
     #     """
     #     Compute log(alpha_t) of a given continuous-time label t in [0, T].
@@ -178,6 +177,49 @@ class NoiseScheduleVP:
     #         ).reshape(-1)
     #     elif self.schedule == "linear":
     #         return -0.25 * t**2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
+
+    
+    # def beta(self, t: torch.Tensor) -> torch.Tensor:
+    #     """
+    #     Autograd-friendly β(t) = -2 * d/dt log α(t).
+    #     Piecewise-linear log α(t) → d/dt is piecewise-constant.
+    #     """
+    #     t = t.clone().requires_grad_(True)
+    #     loga = self.marginal_log_mean_coeff(t)              # diff'able w.r.t. t
+    #     (dloga_dt,) = torch.autograd.grad(
+    #         loga, t,
+    #         grad_outputs=torch.ones_like(loga),
+    #         create_graph=True, retain_graph=True
+    #     )
+    #     return (-2.0 * dloga_dt)
+
+    # def dlog_alpha(self, t):
+    #     return -0.5*self.beta(t)
+
+    # def dalpha(self, t):
+    #     return self.marginal_alpha(t) * self.dlog_alpha(t)
+
+    # def dsigma(self, t: torch.Tensor) -> torch.Tensor:
+    #     t = t.clone().requires_grad_(True)
+    #     loga = self.marginal_log_mean_coeff(t)
+    #     (dloga_dt,) = torch.autograd.grad(
+    #         outputs=loga, inputs=t,
+    #         grad_outputs=torch.ones_like(loga),
+    #         create_graph=True, retain_graph=True
+    #     )
+    #     alpha = torch.exp(loga)
+    #     sigma = torch.sqrt(torch.clamp(1.0 - torch.exp(2*loga), min=0.0))
+    #     return - (alpha**2 / torch.clamp(sigma, min=1e-12)) * dloga_dt
+
+    def dalpha(self, t, dt=1e-2):
+        dt = -dt
+        num = self.marginal_alpha(t[:-1]+dt) - self.marginal_alpha(t[:-1])
+        return num / dt
+
+    def dsigma(self, t, dt=1e-2):
+        dt = -dt
+        num = self.marginal_std(t[:-1]+dt) - self.marginal_std(t[:-1])
+        return num / dt
 
     def marginal_alpha(self, t):
         """
