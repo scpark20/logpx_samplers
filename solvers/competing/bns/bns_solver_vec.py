@@ -24,6 +24,7 @@ class BNS_Solver(Solver):
         self.skip_type = skip_type
         self.flow_shift = flow_shift
         self.checkpoint = checkpoint
+        self.k = k
         
         t_0 = 1.0 / noise_schedule.total_N
         t_T = noise_schedule.T
