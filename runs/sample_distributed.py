@@ -106,6 +106,8 @@ def sample(rank, world_size, config):
     process_samples = end_idx - start_idx
     n_rounds = math.ceil(process_samples / config.batch_size)
 
+    # Load Inception-v3 model.
+    # This is a direct PyTorch translation of http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz
     detector_url = 'https://api.ngc.nvidia.com/v2/models/nvidia/research/stylegan3/versions/1/files/metrics/inception-2015-12-05.pkl'
     detector_kwargs = dict(return_features=True)
     feature_dim = 2048
