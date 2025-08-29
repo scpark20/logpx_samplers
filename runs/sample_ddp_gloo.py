@@ -19,6 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--flow_shift',      type=float, default=3.0)
     parser.add_argument('--NFE',             type=int,   default=10)
     parser.add_argument('--CFG',             type=float, default=4.5)
+    parser.add_argument('--k',               type=float, default=0.5)
     parser.add_argument('--order',           type=int,   default=2)
     parser.add_argument('--data',            type=str,   default='MSCOCO2017')
     parser.add_argument('--save_root',       type=str,   default='/data/scpark/samplings/')
@@ -73,6 +74,9 @@ def get_solver(config: EasyDict):
         return GDual_Solver
     if config.solver == 'BNS-Solver':
         from solvers.competing.bns.bns_solver import BNS_Solver
+        return BNS_Solver
+    if config.solver == 'BNS-Solver_Vec':
+        from solvers.competing.bns.bns_solver_vec import BNS_Solver
         return BNS_Solver
     if config.solver == 'DS-Solver':
         from solvers.competing.ds.ds_solver import DS_Solver
@@ -187,7 +191,7 @@ def main():
             noises = model.get_noise(seeds=seeds)
             solver = Solver(noise_schedule, config.NFE, order=config.order,
                             skip_type=config.skip_type, flow_shift=config.flow_shift,
-                            algorithm_type=config.algorithm_type).to(device)
+                            algorithm_type=config.algorithm_type, k=config.k).to(device)
             if config.pt_dir is not None:
                 from utils.util import get_pt
                 best_pt = get_pt(config.pt_dir, config.pt_criterion)

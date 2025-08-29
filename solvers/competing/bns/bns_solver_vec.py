@@ -14,7 +14,7 @@ class BNS_Solver(Solver):
         flow_shift=1.0,
         algorithm_type="dual_prediction",
         checkpoint=False,
-        k=0.1,
+        k=0.5,
         **kwargs
     ):
         assert algorithm_type == 'dual_prediction'

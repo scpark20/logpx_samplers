@@ -10,7 +10,7 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=multi
+TAG=multi3
 MODEL=DiT
 DATA=ImageNet
 BATCH_SIZE=50          # GPU당 배치
@@ -21,7 +21,7 @@ N_SAMPLES=50000
 SEED_OFFSET=0
 
 SOLVERS=("Dual-Solver")
-NFES=(3)
+NFES=(3 5)
 CFGS=(1.5)
 
 # 사용 GPU 개수 -> nproc
@@ -33,8 +33,8 @@ BASE_OUT="samplings"   # SAVE_ROOT의 베이스
 for solver in "${SOLVERS[@]}"; do
   for cfg in "${CFGS[@]}"; do
     for nfe in "${NFES[@]}"; do
-      SAVE_ROOT="${BASE_OUT}/${MODEL}/ablations/multi/cfg${cfg}_s${nfe}_N${N_SAMPLES}"
-      PT_DIR="logs/ablations/multi/s${nfe}"
+      SAVE_ROOT="${BASE_OUT}/${MODEL}/ablations/multi3/cfg${cfg}_s${nfe}_N${N_SAMPLES}"
+      PT_DIR="logs/ablations/multi3/s${nfe}"
 
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
 
