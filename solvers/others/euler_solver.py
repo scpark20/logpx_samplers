@@ -65,5 +65,7 @@ class Euler_Solver(Solver):
         if output_traj:            
             outputs['trajs'] = torch.stack(trajs, dim=1)
             outputs['timesteps'] = timesteps.detach().cpu()
+            outputs['alphas'] = signal_rates.detach().cpu()
+            outputs['sigmas'] = noise_rates.detach().cpu()
 
         return outputs
