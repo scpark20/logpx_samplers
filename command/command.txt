@@ -54,6 +54,7 @@ scp -r -P 22223 ./sana scpark@220.117.157.23:/data/scpark/logs
 scp -P 22223 scpark@220.117.157.23:/data/scpark/logs_0828.zip .
 scp -P 22223 scpark@220.117.157.23:/data/scpark/logs/0826.zip .
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/ablations/clip .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/ablations/multi .
 
 6. dataset 보내기
 scp -P 22223 *.zip scpark@220.117.157.23:/data/scpark/dataset/dit
