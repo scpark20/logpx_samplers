@@ -110,38 +110,6 @@ def save_config(config):
     with open(os.path.join(config.save_dir, 'config.json'), 'w') as f:
         json.dump(dict(config), f, indent=2)
 
-# ---------------------- DDP helpers (최소 추가) ----------------------
-from datetime import timedelta
-import torch.distributed as dist
-import torch
-
-def init_dist():
-    world = int(os.environ.get("WORLD_SIZE", "1"))
-    backend = os.environ.get("DIST_BACKEND", "gloo")  # ← 기본 gloo
-    if world > 1:
-        rank  = int(os.environ["RANK"])
-        local = int(os.environ.get("LOCAL_RANK", rank % max(1, torch.cuda.device_count())))
-        torch.cuda.set_device(local)
-        dev = torch.device(f"cuda:{local}")
-        dist.init_process_group(
-            backend=backend,
-            init_method="env://",
-            timeout=timedelta(seconds=300),
-        )
-        return rank, world, local
-    return 0, 1, 0
-
-def barrier(_local_rank: int):
-    if dist.is_available() and dist.is_initialized():
-        dist.barrier()            
-            
-def bcast_obj(obj, src=0):
-    if not (dist.is_available() and dist.is_initialized()):
-        return obj
-    box = [obj]
-    dist.broadcast_object_list(box, src=src)
-    return box[0]
-
 # 공통 헬퍼
 def compact(t, dtype=torch.float32):
     return t.detach().to(dtype).clone().cpu()
@@ -249,6 +217,3 @@ def main():
         print(f"Done. Saved to: {config.save_dir}", flush=True)
     if dist.is_available() and dist.is_initialized():
         dist.destroy_process_group()
-
-if __name__ == '__main__':
-    main()

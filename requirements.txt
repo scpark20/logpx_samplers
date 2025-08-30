@@ -6,3 +6,4 @@ pytorch_fid==0.3.0
 timm==1.0.19
 open_clip_torch==3.1.0
 tensorflow==2.20.0
+clean-fid==0.1.35
