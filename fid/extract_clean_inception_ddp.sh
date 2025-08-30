@@ -1,0 +1,1 @@
+torchrun --nproc_per_node=2 -m fid.extract_clean_inception_ddp

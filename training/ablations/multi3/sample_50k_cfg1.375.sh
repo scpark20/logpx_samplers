@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-#export CUDA_VISIBLE_DEVICES=$(python -c 'import torch;print(",".join(map(str, range(torch.cuda.device_count()))))')
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=$(python -c 'import torch;print(",".join(map(str, range(torch.cuda.device_count()))))')
+#export CUDA_VISIBLE_DEVICES=0,1
 
 # 🔇 BLAS/OMP 배너 억제(사전에 지정)
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
@@ -22,7 +22,7 @@ SEED_OFFSET=0
 
 SOLVERS=("Dual-Solver")
 NFES=(9)
-CFGS=(1.5)
+CFGS=(1.375)
 
 # 사용 GPU 개수 -> nproc
 IFS=',' read -ra _GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
@@ -57,8 +57,7 @@ for solver in "${SOLVERS[@]}"; do
           --n_samples "$N_SAMPLES" \
           --seed_offset "$SEED_OFFSET" \
           --batch_size "$BATCH_SIZE" \
-          --output_inception \
-          --output_clean_inception
+          --output_inception
     done
   done
 done

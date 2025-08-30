@@ -4,11 +4,13 @@ from pytorch_fid.inception import InceptionV3
 import torchvision.transforms as TF
 
 class FIDInception(nn.Module):
-    def __init__(self, dims=2048, resize_input=True, normalize_input=True, net_dtype=torch.float32):
+    def __init__(self, dims=2048, resize_input=True, normalize_input=True, device=None, net_dtype=torch.float32):
         super().__init__()
+        if device is None:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.net = InceptionV3([InceptionV3.BLOCK_INDEX_BY_DIM[dims]],
                                 normalize_input=normalize_input
-                                ).eval().to(dtype=net_dtype)
+                                ).eval().to(device=device, dtype=net_dtype)
         for p in self.net.parameters(): p.requires_grad_(False)
         self.transform = TF.ToTensor()
 

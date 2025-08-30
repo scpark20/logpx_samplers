@@ -333,6 +333,7 @@ def model_wrapper(
     pag_applied_layers=[],
     classifier_fn=None,
     classifier_kwargs={},
+    cfg_channels='full'
 ):
     """Create a wrapper function for the noise prediction model.
 
@@ -498,7 +499,12 @@ def model_wrapper(
                     noise_uncond, noise = noise_pred_fn(x_in, t_in, cond=c_in).chunk(2)
                 except:
                     noise_uncond, noise = noise_pred_fn(x_in, t_in, cond=c_in)[0].chunk(2)
-                return noise_uncond + guidance_scale * (noise - noise_uncond)
+                if cfg_channels == 'full':    
+                    return noise_uncond + guidance_scale * (noise - noise_uncond)
+                elif cfg_channels == 'rgb':
+                    guided = noise_uncond.clone()
+                    guided[:, :3] = noise_uncond[:, :3] + guidance_scale * (noise[:, :3] - noise_uncond[:, :3])
+                    return guided
 
     assert model_type in ["noise", "x_start", "v", "score", "flow"]
     assert guidance_type in [

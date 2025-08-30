@@ -88,6 +88,7 @@ class DiT(Backbone):
         noise_schedule,
         pos_conds = [0],
         guidance_scale: float = 4.0,
+        cfg_channels='full',
     ) -> callable:
         class_labels = torch.as_tensor(pos_conds, dtype=torch.long, device=self.device).reshape(-1)
         class_null = torch.tensor([1000] * len(pos_conds), device=self.device)
@@ -108,5 +109,6 @@ class DiT(Backbone):
                 condition=class_labels,
                 unconditional_condition=class_null,
                 guidance_scale=guidance_scale,
+                cfg_channels=cfg_channels
         )
         return model_fn

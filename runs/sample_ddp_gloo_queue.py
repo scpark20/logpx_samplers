@@ -1,11 +1,14 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import argparse, os, re, sys, json, math, torch, numpy as np
 from easydict import EasyDict
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor
 from utils.fid import FIDInception
 from utils.clean_fid import CleanFIDInception
 from utils.clip import CLIPEmbedder
-from utils.tf_fid_cpu import tf_inception_encode
+from utils.tf_fid_cpu import tf_inception_encode  # TF Inception (CPU-only)
 import torch.distributed as dist
 from datetime import timedelta
 
@@ -21,22 +24,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--flow_shift',      type=float, default=3.0)
     parser.add_argument('--NFE',             type=int,   default=10)
     parser.add_argument('--CFG',             type=float, default=4.5)
-    parser.add_argument('--cfg_channels',    type=str,   default='full')
     parser.add_argument('--k',               type=float, default=0.5)
     parser.add_argument('--order',           type=int,   default=2)
     parser.add_argument('--data',            type=str,   default='MSCOCO2017')
     parser.add_argument('--save_root',       type=str,   default='/data/scpark/samplings/')
     parser.add_argument('--pt_dir',          type=str,   default=None)
-    parser.add_argument('--pt_criterion',          type=str,   default='train_loss')
+    parser.add_argument('--pt_criterion',    type=str,   default='train_loss')
     parser.add_argument('--n_samples',       type=int,   default=100)
     parser.add_argument('--batch_size',      type=int,   default=5)
     parser.add_argument('--output_noise',    action='store_true',  default=False)
     parser.add_argument('--output_traj',     action='store_true',  default=False)
     parser.add_argument('--output_inception',       action='store_true',  default=False)
     parser.add_argument('--output_clean_inception', action='store_true',  default=False)
-    parser.add_argument('--output_tf_inception',    action='store_true', default=False)
+    parser.add_argument('--output_tf_inception',    action='store_true',  default=False)
     parser.add_argument('--output_sample',          action='store_true',  default=False)
     parser.add_argument('--output_clip',            action='store_true',  default=False)
+    parser.add_argument('--async_tf_inception',     action='store_true',  default=False)  # ← 비동기 TF(CPU)
     parser.add_argument('--seed_offset',     type=int,   default=0)
     return parser
 
@@ -89,9 +92,6 @@ def get_solver(config: EasyDict):
     if config.solver == 'DS-Solver_DDPM':
         from solvers.competing.ds.ds_solver_ddpm import DS_Solver
         return DS_Solver
-    if config.solver == 'DDPM-Solver':
-        from solvers.others.ddpm_solver import DDPM_Solver
-        return DDPM_Solver
     raise ValueError(f"Unknown solver: {config.solver}")
 
 def get_data(config: EasyDict):
@@ -117,13 +117,12 @@ def save_config(config):
         json.dump(dict(config), f, indent=2)
 
 # ---------------------- DDP helpers (최소 추가) ----------------------
-from datetime import timedelta
 import torch.distributed as dist
 import torch
 
 def init_dist():
     world = int(os.environ.get("WORLD_SIZE", "1"))
-    backend = os.environ.get("DIST_BACKEND", "gloo")  # ← 기본 gloo
+    backend = os.environ.get("DIST_BACKEND", "gloo")  # 기본: gloo (GPU 샘플링은 PyTorch, TF는 CPU)
     if world > 1:
         rank  = int(os.environ["RANK"])
         local = int(os.environ.get("LOCAL_RANK", rank % max(1, torch.cuda.device_count())))
@@ -171,12 +170,15 @@ def main():
     model  = get_model(config)
     Solver = get_solver(config)
     data   = get_data(config)
-    if config.output_inception:
-        inception = FIDInception().to(device)
-    if config.output_clean_inception:
-        clean_inception = CleanFIDInception().to(device)
-    if config.output_clip:
-        clip = CLIPEmbedder(device=getattr(model, "device", device))
+
+    # 평가기들 준비 (필요할 때만)
+    inception = FIDInception().to(device) if config.output_inception else None
+    clean_inception = CleanFIDInception().to(device) if config.output_clean_inception else None
+    clip = CLIPEmbedder(device=getattr(model, "device", device)) if config.output_clip else None
+
+    # 비동기 TF(CPU) 실행기 (더블버퍼)
+    tf_exec = ThreadPoolExecutor(max_workers=1) if (config.output_tf_inception and config.async_tf_inception) else None
+    prev = None  # 직전 배치 스테이징
 
     # 전역 인덱스 샤딩 (seed = seed_offset + global_idx 유지)
     all_idx = list(range(config.n_samples))
@@ -186,9 +188,41 @@ def main():
     pbar = tqdm(total=n_iters, desc=f"Sampling(rank{rank})", disable=(rank != 0))
 
     torch.backends.cudnn.benchmark = True
-    #with torch.no_grad(), torch.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=torch.cuda.is_available()):
+
     with torch.no_grad():
         ptr = 0
+
+        def _save_batch(batch):
+            # TF Inception (CPU): 비동기면 future → 결과 대기
+            if config.output_tf_inception:
+                if 'tf_inception_features' in batch:
+                    tf_feats_t = batch['tf_inception_features']
+                else:
+                    tf_feats_np = batch['tf_future'].result()
+                    tf_feats_t = torch.from_numpy(tf_feats_np).to("cpu", dtype=torch.float32)
+
+            # 저장
+            for j, gidx in enumerate(batch['batch_indices']):
+                output = {'cond': batch['conds'][j]}
+                if config.output_sample:
+                    output['sample'] = compact(batch['samples'][j])
+                if config.output_inception:
+                    output['inception_feature'] = compact(batch['inception_features'][j])
+                if config.output_clean_inception:
+                    output['clean_inception_feature'] = compact(batch['clean_inception_features'][j])
+                if config.output_tf_inception:
+                    output['tf_inception_feature'] = compact(tf_feats_t[j])
+                if config.output_clip:
+                    output['clip_feature'] = compact(batch['clip_features'][j])
+                if config.output_noise and (batch['noises'] is not None):
+                    output['noise'] = compact(batch['noises'][j])
+                if config.output_traj and (batch['trajs'] is not None):
+                    output['traj'] = compact(batch['trajs'][j])
+                    output['timesteps'] = compact(batch['timesteps'])
+                    output['alphas'] = compact(batch['alphas'])
+                    output['sigmas'] = compact(batch['sigmas'])
+                torch.save(output, os.path.join(config.save_dir, f"{gidx}.pt"))
+
         while ptr < len(my_idx):
             batch_indices = my_idx[ptr: ptr + config.batch_size]
             ptr += config.batch_size
@@ -197,7 +231,7 @@ def main():
             seeds = config.seed_offset + np.asarray(batch_indices, dtype=int)
 
             noise_schedule = model.get_noise_schedule()
-            model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG, cfg_channels=config.cfg_channels)
+            model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
             noises = model.get_noise(seeds=seeds)
             solver = Solver(noise_schedule, config.NFE, order=config.order,
                             skip_type=config.skip_type, flow_shift=config.flow_shift,
@@ -209,50 +243,69 @@ def main():
                 solver.load_state_dict(state_dict, strict=True)
 
             outputs = solver.sample(noises, model_fn, output_traj=config.output_traj)
-            if (config.output_inception or config.output_clip or
-                    config.output_clean_inception or config.output_tf_inception):
+
+            need_decode = (config.output_inception or config.output_clip or
+                           config.output_clean_inception or config.output_tf_inception)
+            if need_decode:
                 decoded = model.decode_vae(outputs['samples'], raw_output=True, pil_output=True)
+
+            # 즉시 계산되는 피처들
             if config.output_inception:
                 inception_features = inception(decoded['pil_output']).detach().cpu()
+            else:
+                inception_features = None
             if config.output_clean_inception:
                 clean_inception_features = clean_inception(decoded['pil_output']).detach().cpu()
-            if config.output_tf_inception:
-                tf_feats = tf_inception_encode(decoded['pil_output'])          # np.float32 [B,2048]
-                tf_inception_features = torch.from_numpy(tf_feats).to("cpu", dtype=torch.float32)
+            else:
+                clean_inception_features = None
             if config.output_clip:
                 clip_features = clip.encode_image(decoded['raw_output']).detach().cpu()
+            else:
+                clip_features = None
 
+            # 텐서들 CPU로 스테이징
             samples = outputs['samples'].detach().cpu()
-            if config.output_noise:
-                noises = noises.detach().cpu()
-            if config.output_traj and 'trajs' in outputs:
-                trajs = outputs['trajs'].detach().cpu()
-                timesteps = outputs['timesteps'].detach().cpu()
-                alphas = outputs['alphas'].detach().cpu()
-                sigmas = outputs['sigmas'].detach().cpu()
-            
-            # 글로벌 인덱스로 저장 (충돌 없음)
-            for j, gidx in enumerate(batch_indices):
-                output = {'cond': conds[j]}
-                if config.output_sample:
-                    output['sample'] = compact(samples[j])
-                if config.output_inception:
-                    output['inception_feature'] = compact(inception_features[j])
-                if config.output_clean_inception:
-                    output['clean_inception_feature'] = compact(clean_inception_features[j])
-                if config.output_tf_inception:
-                    output['tf_inception_feature'] = compact(tf_inception_features[j])
-                if config.output_clip:
-                    output['clip_feature'] = compact(clip_features[j])
-                if config.output_noise:
-                    output['noise'] = compact(noises[j])
-                if config.output_traj and trajs is not None:
-                    output['traj'] = compact(trajs[j])
-                    output['timesteps'] = compact(timesteps)
-                    output['alphas'] = compact(alphas)
-                    output['sigmas'] = compact(sigmas)
-                torch.save(output, os.path.join(config.save_dir, f"{gidx}.pt"))
+            noises_cpu = noises.detach().cpu() if config.output_noise else None
+            trajs = outputs.get('trajs', None)
+            trajs = trajs.detach().cpu() if (config.output_traj and trajs is not None) else None
+            timesteps = outputs.get('timesteps', None)
+            alphas    = outputs.get('alphas', None)
+            sigmas    = outputs.get('sigmas', None)
+            timesteps = timesteps.detach().cpu() if (config.output_traj and timesteps is not None) else None
+            alphas    = alphas.detach().cpu()    if (config.output_traj and alphas    is not None) else None
+            sigmas    = sigmas.detach().cpu()    if (config.output_traj and sigmas    is not None) else None
 
+            # 현재 배치 스테이징
+            cur = dict(
+                batch_indices=batch_indices, conds=conds,
+                samples=samples, noises=noises_cpu,
+                trajs=trajs, timesteps=timesteps, alphas=alphas, sigmas=sigmas,
+                inception_features=inception_features,
+                clean_inception_features=clean_inception_features,
+                clip_features=clip_features,
+            )
+
+            # TF Inception(CPU): 비동기 제출 또는 동기 계산
+            if config.output_tf_inception:
+                if tf_exec is not None:
+                    cur['tf_future'] = tf_exec.submit(tf_inception_encode, decoded['pil_output'])
+                else:
+                    tf_feats_np = tf_inception_encode(decoded['pil_output'])
+                    cur['tf_inception_features'] = torch.from_numpy(tf_feats_np).to("cpu", dtype=torch.float32)
+
+            # 직전 배치 저장 (더블버퍼 파이프라인)
+            if tf_exec is not None:
+                if prev is not None:
+                    _save_batch(prev)
+                    pbar.update(1)
+                prev = cur
+            else:
+                _save_batch(cur)
+                pbar.update(1)
+
+        # 마지막 배치 flush
+        if tf_exec is not None and prev is not None:
+            _save_batch(prev)
             pbar.update(1)
 
     pbar.close()
