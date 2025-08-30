@@ -38,30 +38,53 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--output_sample',          action='store_true',  default=False)
     parser.add_argument('--output_clip',            action='store_true',  default=False)
     parser.add_argument('--seed_offset',     type=int,   default=0)
+    parser.add_argument('--dtype',       type=str, default='bf16',
+                        help="Torch dtype: one of {bf16, fp32, fp16} (DiT honors this).")
     return parser
 
 def parse_args() -> EasyDict:
     return EasyDict(vars(build_parser().parse_args()))
 
+# ---- add below (helper) ----
+def resolve_dtype(name: str) -> torch.dtype:
+    n = (name or "").lower()
+    if n in ("bf16", "bfloat16"): return torch.bfloat16
+    if n in ("fp32", "float32", "float"): return torch.float32
+    if n in ("fp16", "float16", "half"):  return torch.float16
+    raise ValueError(f"Unknown dtype: {name}. Use one of bf16|fp32|fp16")
+
 # ---------------------- user funcs (원본 유지) ----------------------
 def get_model(config: EasyDict):
+    dt = resolve_dtype(config.dtype)
+
     if config.model == 'SANA':
         from backbones.sana import SANA
-        if config.model_id is not None:
-            return SANA(model_id=config.model_id)
-        else:
-            return SANA()
+        try:
+            return SANA(model_id=config.model_id, dtype=dt) if config.model_id is not None else SANA(dtype=dt)
+        except TypeError:
+            return SANA(model_id=config.model_id) if config.model_id is not None else SANA()
+
     if config.model == 'PixArt-Sigma':
         from backbones.pixart_sigma import PixArtSigma
-        return PixArtSigma()
+        try:
+            return PixArtSigma(dtype=dt)
+        except TypeError:
+            return PixArtSigma()
+
     if config.model == 'DiT':
         from backbones.dit import DiT
-        return DiT()
+        # DiT 백본은 dtype 인자를 지원 (이전 메시지의 클래스와 호환)
+        return DiT(dtype=dt, model_id=config.model_id) if config.model_id is not None else DiT(dtype=dt)
+
     if config.model == 'GMDiT':
         GMFLOW = os.path.join("submodules", "GMFlow")
         sys.path.insert(0, GMFLOW)
         from backbones.gmdit import GMDiT
-        return GMDiT()
+        try:
+            return GMDiT(dtype=dt)
+        except TypeError:
+            return GMDiT()
+
     raise ValueError(f"Unknown model: {config.model}")
 
 def get_solver(config: EasyDict):
