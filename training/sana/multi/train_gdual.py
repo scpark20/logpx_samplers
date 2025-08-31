@@ -197,7 +197,7 @@ def do_train_loop(device, solver, optimizer, global_step):
             latent_pred = solver.sample(noises, model_fn)['samples']
             if 'clip' == config.main_loss:
                 sample_pred = model.decode_vae(latent_pred, raw_output=True)['raw_output']
-                loss = clip.get_clip_loss(sample_pred, conds)
+                loss = get_clip_loss(sample_pred, conds)
                 
         abort_if_bad("train", loss, global_step)  # ← 즉시 중단
         loss.backward()
