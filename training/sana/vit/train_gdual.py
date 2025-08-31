@@ -19,7 +19,6 @@ from tqdm import tqdm
 def get_args():
     p = argparse.ArgumentParser(description="GDual training (only 3 overrides)")
     p.add_argument('--n_steps',    type=int, default=3)
-
     p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
     return p.parse_args()
 
@@ -31,10 +30,10 @@ args = get_args()
 config = EasyDict()
 config.backbone      = 'SANA'
 config.valid_pt_dir  = '/dataset/sana/valid4.5_100'
-config.batch_size    = 1
+config.batch_size    = 2
 config.n_valid       = 100
 config.CFG           = 4.5
-config.latent_size   = (32, 32, 32)
+config.latent_size   = (32, 16, 16)
 
 # LR & Scheduler
 config.base_lr       = 2e-3
@@ -64,7 +63,7 @@ if config.backbone == 'SANA':
 device = model.device
 print(model)
 if 'clip' in config.losses:
-    clip = CLIPEmbedder(device=model.device).to(device)
+    clip = CLIPEmbedder(device=model.device)#.to(device)
 
 print('done')
 
@@ -83,7 +82,8 @@ solver = GDual_Solver(
     steps=config.n_steps,
     transform=transform,
     param_extractor=extractor,
-    skip_type="time_uniform_flow",
+    skip_type='time_uniform_flow',
+    flow_shift=3.0,
     pred_order=1,
     corr_order=2,
     order1_kappa=True,

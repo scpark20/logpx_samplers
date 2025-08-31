@@ -31,10 +31,10 @@ args = get_args()
 config = EasyDict()
 config.backbone      = 'SANA'
 config.valid_pt_dir  = '/dataset/sana/valid4.5_100'
-config.batch_size    = 1
+config.batch_size    = 10
 config.n_valid       = 100
 config.CFG           = 4.5
-config.latent_size   = (32, 32, 32)
+config.latent_size   = (32, 16, 16)
 
 # LR & Scheduler
 config.base_lr       = 2e-3
@@ -104,6 +104,7 @@ solver = GDual_Solver(
     transform=transform,
     param_extractor=extractor,
     skip_type="time_uniform_flow",
+    flow_shift=3.0,
     pred_order=1,
     corr_order=2,
     order1_kappa=True,
