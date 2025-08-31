@@ -26,7 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     #parser.add_argument('--cfg_channels',    type=str,   default='full')
     parser.add_argument('--k',               type=float, default=0.5)
     parser.add_argument('--order',           type=int,   default=2)
-    parser.add_argument('--data',            type=str,   default='MSCOCO2017')
+    parser.add_argument('--data',            type=str,   default='MSCOCO2014_valid')
     parser.add_argument('--save_root',       type=str,   default='/data/scpark/samplings/')
     parser.add_argument('--pt_dir',          type=str,   default=None)
     parser.add_argument('--pt_criterion',          type=str,   default='train_loss')
@@ -139,8 +139,14 @@ def get_solver(config: EasyDict):
     raise ValueError(f"Unknown solver: {config.solver}")
 
 def get_data(config: EasyDict):
-    if config.data == 'MSCOCO2017':
-        return np.load('prompts/mscoco2017.npz')['arr_0'].tolist()
+    if config.data == 'MSCOCO2014_train':
+        data = np.load('prompts/mscoco2014_train.npz')['arr_0'].tolist()
+        data = [d[1] for d in data]
+        return data
+    if config.data == 'MSCOCO2014_valid':
+        data = np.load('prompts/mscoco2014_valid.npz')['arr_0'].tolist()
+        data = [d[1] for d in data]
+        return data
     if config.data == 'ImageNet':
         return [i%1000 for i in range(config.n_samples)]
     raise ValueError(f"Unknown data: {config.data}")

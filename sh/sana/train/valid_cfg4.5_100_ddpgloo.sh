@@ -12,13 +12,13 @@ export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
 TAG=valid
 MODEL=SANA
-DATA=MSCOCO2017
+DATA=MSCOCO2014_valid
 BATCH_SIZE=1          # GPU당 배치
 ALGO=vector_prediction
 SKIP=time_uniform_flow
 ORDER=1
 N_SAMPLES=100
-SEED_OFFSET=1
+SEED_OFFSET=0
 
 SOLVERS=("Euler")
 NFES=(200)
@@ -43,6 +43,7 @@ for solver in "${SOLVERS[@]}"; do
           --solver "$solver" \
           --algorithm_type "$ALGO" \
           --skip_type "$SKIP" \
+          --flow_shift 3.0 \
           --NFE "$nfe" \
           --CFG "$cfg" \
           --order "$ORDER" \

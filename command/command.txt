@@ -12,17 +12,17 @@ pip install git+https://github.com/openai/CLIP.git
 
 1. 데이터셋 받기
 mkdir /dataset
-scp -P 22223 scpark@220.117.157.23:/data/scpark/dataset/*.zip /dataset
-scp -P 22223 scpark@220.117.157.23:/data/scpark/dataset/train4.0_10k.zip /dataset
+scp -P 22223 scpark@220.117.157.23:/dataset/*.zip /dataset
+scp -P 22223 scpark@220.117.157.23:/dataset/train4.0_10k.zip /dataset
 
 # DiT
 mkdir -p /dataset/dit
-scp -P 22223 scpark@220.117.157.23:/data/scpark/dataset/dit/*.zip /dataset/dit
-scp -P 22223 scpark@220.117.157.23:/data/scpark/dataset/dit/stats.pt /dataset/dit
+scp -P 22223 scpark@220.117.157.23:/dataset/dit/*.zip /dataset/dit
+scp -P 22223 scpark@220.117.157.23:/dataset/dit/stats.pt /dataset/dit
 
 # SANA
 mkdir -p /dataset/sana
-scp -P 22223 scpark@220.117.157.23:/data/scpark/dataset/sana/*.zip /dataset/sana
+scp -P 22223 scpark@220.117.157.23:/dataset/sana/*.zip /dataset/sana
 
 2. 압축풀기
 cd /dataset/sana
@@ -54,13 +54,21 @@ scp -r -P 22223 ./sana scpark@220.117.157.23:/data/scpark/logs
 scp -P 22223 scpark@220.117.157.23:/data/scpark/logs_0828.zip .
 scp -P 22223 scpark@220.117.157.23:/data/scpark/logs/0826.zip .
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/ablations/clip .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/ablations/clip_h .
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/ablations/multi .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/ablations/multi3 logs/ablations/
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/ablations .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/dit/bns .
 
 6. dataset 보내기
-scp -P 22223 *.zip scpark@220.117.157.23:/data/scpark/dataset/dit
-scp -P 22223 1.6B_1024px_valid4.5.zip scpark@220.117.157.23:/data/scpark/dataset/sana
-scp -P 22223 sana_valid4.5.zip scpark@220.117.157.23:/data/scpark/dataset
-scp -P 22223 valid4.5.zip scpark@220.117.157.23:/data/scpark/dataset/sana
+scp -P 22223 *.zip scpark@220.117.157.23:/dataset/dit
+scp -P 22223 1.6B_1024px_valid4.5.zip scpark@220.117.157.23:/dataset/sana
+scp -P 22223 sana_valid4.5.zip scpark@220.117.157.23:/dataset
+scp -P 22223 valid4.5.zip scpark@220.117.157.23:/dataset/sana
+scp -P 22223 /dataset/sana/*.zip scpark@220.117.157.23:/dataset/sana/
 
 7. stats 받기
 scp -P 22223 scpark@220.117.157.23:/dataset/dit/stats.pt /dataset/dit/
+
+8. MJHQ-30K, MS-COCO2014
+scp -r -P 22223 scpark@220.117.157.23:/data/jyshin/* /dataset/
