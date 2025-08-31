@@ -30,7 +30,7 @@ args = get_args()
 # ===============================
 config = EasyDict()
 config.backbone      = 'SANA'
-config.batch_size    = 1
+config.batch_size    = 10
 config.n_valid       = 100
 config.CFG           = 4.5
 config.latent_size   = (32, 16, 16)
@@ -47,7 +47,7 @@ config.n_clips       = args.n_clips
 # -----------------------------
 
 # Loss
-config.losses = ['cosine']
+config.losses = ['cosine', 'clip']
 config.main_loss = 'clip'
 
 os.makedirs(config.log_dir, exist_ok=True)
@@ -169,7 +169,7 @@ def get_valid_loss(prompts, device, solver):
             latent_pred = solver.sample(noises, model_fn)['samples']
             if 'cosine' in config.losses:
                 sample_pred = model.decode_vae(latent_pred, raw_output=True)['raw_output']
-                loss = clip.get_cossim_loss(sample_pred, conds)
+                loss = clips[0].get_cossim_loss(sample_pred, conds)
                 losses.append(loss.item())
 
     return np.mean(losses)
