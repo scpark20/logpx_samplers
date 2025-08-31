@@ -153,7 +153,7 @@ def save_checkpoint(global_step, save_dir, solver, optimizer):
 def get_clip_loss(raw_output, targets):
     loss_list = []
     for clip in clips:
-        loss = clip.get_clip_loss(raw_output, targets=targets)['loss']
+        loss = clip.get_clip_loss(raw_output, texts=targets)['loss']
         loss_list.append(loss)
     return torch.mean(torch.stack(loss_list))
 
