@@ -69,20 +69,23 @@ class SANA(Backbone):
     def decode_vae(
         self,
         latents: torch.Tensor,
-        raw_output=False,
+        raw_output=True,
+        pil_output=False,
         output_type: str = 'pil'
     ) -> Union[torch.Tensor, Image.Image]:
         """
         Decode latent tensor to image.
         """
 
+        outputs = {}
         with self.context:
             lat = (latents / self.pipe.vae.config.scaling_factor).to(self.dtype)
             img_tensor = self.pipe.vae.decode(lat, return_dict=False)[0]
             if raw_output:
-                return img_tensor
-            else:
-                return self.pipe.image_processor.postprocess(img_tensor, output_type=output_type)
+                outputs['raw_output'] = img_tensor
+            if pil_output:
+                outputs['pil_output'] = self.pipe.image_processor.postprocess(img_tensor, output_type=output_type)
+            return outputs
 
     def get_noise_schedule(self):
         noise_schedule = NoiseScheduleFlow(schedule="discrete")

@@ -10,6 +10,7 @@ class Euler_Solver(Solver):
         skip_type="time_uniform_flow",
         flow_shift=1.0,
         algorithm_type="data_prediction",
+        **kwargs,
     ):
         super().__init__(noise_schedule, algorithm_type)
         self.steps = steps

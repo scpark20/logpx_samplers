@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 import argparse, os, re, sys, json, math, torch, numpy as np
 from easydict import EasyDict
-from tqdm import tqdm
+from pathlib import Path
+from PIL import Image
+from tqdm import tqdm, trange   # ← trange 추가
 from utils.fid import FIDInception
 from utils.clean_fid import CleanFIDInception
 from utils.clip import CLIPEmbedder
@@ -21,7 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--flow_shift',      type=float, default=3.0)
     parser.add_argument('--NFE',             type=int,   default=10)
     parser.add_argument('--CFG',             type=float, default=4.5)
-    parser.add_argument('--cfg_channels',    type=str,   default='full')
+    #parser.add_argument('--cfg_channels',    type=str,   default='full')
     parser.add_argument('--k',               type=float, default=0.5)
     parser.add_argument('--order',           type=int,   default=2)
     parser.add_argument('--data',            type=str,   default='MSCOCO2017')
@@ -37,6 +39,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--output_tf_inception',    action='store_true', default=False)
     parser.add_argument('--output_sample',          action='store_true',  default=False)
     parser.add_argument('--output_clip',            action='store_true',  default=False)
+    parser.add_argument('--output_png', action='store_true', default=False,
+                        help='Decode VAE output and save PNGs to save_dir as {gidx:06d}.png')
+    parser.add_argument('--build_npz', action='store_true', default=False,
+                        help='After sampling, build samples.npz (arr_0, NHWC uint8) from saved PNGs (rank0 only)')
+
+
     parser.add_argument('--seed_offset',     type=int,   default=0)
     parser.add_argument('--dtype',       type=str, default='bf16',
                         help="Torch dtype: one of {bf16, fp32, fp16} (DiT honors this).")
@@ -52,6 +60,19 @@ def resolve_dtype(name: str) -> torch.dtype:
     if n in ("fp32", "float32", "float"): return torch.float32
     if n in ("fp16", "float16", "half"):  return torch.float16
     raise ValueError(f"Unknown dtype: {name}. Use one of bf16|fp32|fp16")
+
+# ---- PNG → NPZ 빌더 ----
+def build_npz_from_pngs(png_dir: Path, out_npz: Path, n: int):
+    """
+    png_dir/{000000.png, 000001.png, ...} → out_npz (arr_0: NHWC uint8)
+    NOTE: n=50_000, 256x256x3이면 메모리 ~9.8GB 필요.
+    """
+    arr = np.empty((n, 256, 256, 3), dtype=np.uint8)  # NHWC
+    for i in trange(n, desc="Building NPZ"):
+        im = Image.open(png_dir / f"{i:06d}.png").convert("RGB")
+        arr[i] = np.asarray(im, dtype=np.uint8)
+    np.savez_compressed(out_npz, arr_0=arr)
+
 
 # ---------------------- user funcs (원본 유지) ----------------------
 def get_model(config: EasyDict):
@@ -220,7 +241,7 @@ def main():
             seeds = config.seed_offset + np.asarray(batch_indices, dtype=int)
 
             noise_schedule = model.get_noise_schedule()
-            model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG, cfg_channels=config.cfg_channels)
+            model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)#, cfg_channels=config.cfg_channels)
             noises = model.get_noise(seeds=seeds)
             solver = Solver(noise_schedule, config.NFE, order=config.order,
                             skip_type=config.skip_type, flow_shift=config.flow_shift,
@@ -232,15 +253,23 @@ def main():
                 solver.load_state_dict(state_dict, strict=True)
 
             outputs = solver.sample(noises, model_fn, output_traj=config.output_traj)
-            if (config.output_inception or config.output_clip or
-                    config.output_clean_inception or config.output_tf_inception):
+
+            # ---- 디코딩 필요 여부 (PNG/특징 추출 모두 포함) ----
+            needs_decode = (
+                config.output_png or
+                config.output_inception or config.output_clean_inception or
+                config.output_tf_inception or config.output_clip
+            )
+            if needs_decode:
                 decoded = model.decode_vae(outputs['samples'], raw_output=True, pil_output=True)
+
+            # ---- 특징 추출 ----
             if config.output_inception:
                 inception_features = inception(decoded['pil_output']).detach().cpu()
             if config.output_clean_inception:
                 clean_inception_features = clean_inception(decoded['pil_output']).detach().cpu()
             if config.output_tf_inception:
-                tf_feats = tf_inception_encode(decoded['pil_output'])          # np.float32 [B,2048]
+                tf_feats = tf_inception_encode(decoded['pil_output'])  # np.float32 [B,2048]
                 tf_inception_features = torch.from_numpy(tf_feats).to("cpu", dtype=torch.float32)
             if config.output_clip:
                 clip_features = clip.encode_image(decoded['raw_output']).detach().cpu()
@@ -248,15 +277,25 @@ def main():
             samples = outputs['samples'].detach().cpu()
             if config.output_noise:
                 noises = noises.detach().cpu()
-            if config.output_traj and 'trajs' in outputs:
+
+            # 안전 초기화 (solver가 trajs 키를 안 줄 수도 있음)
+            trajs = timesteps = alphas = sigmas = None
+            if config.output_traj and ('trajs' in outputs):
                 trajs = outputs['trajs'].detach().cpu()
                 timesteps = outputs['timesteps'].detach().cpu()
                 alphas = outputs['alphas'].detach().cpu()
                 sigmas = outputs['sigmas'].detach().cpu()
-            
-            # 글로벌 인덱스로 저장 (충돌 없음)
+
+            # ---- 개별 저장 (전역 인덱스) ----
             for j, gidx in enumerate(batch_indices):
                 output = {'cond': conds[j]}
+
+                # PNG 저장
+                if config.output_png:
+                    img = decoded['pil_output'][j]   # PIL.Image.Image
+                    (Path(config.save_dir) / f"{gidx:06d}.png").parent.mkdir(parents=True, exist_ok=True)
+                    img.save(Path(config.save_dir) / f"{gidx:06d}.png")
+
                 if config.output_sample:
                     output['sample'] = compact(samples[j])
                 if config.output_inception:
@@ -269,17 +308,25 @@ def main():
                     output['clip_feature'] = compact(clip_features[j])
                 if config.output_noise:
                     output['noise'] = compact(noises[j])
-                if config.output_traj and trajs is not None:
+                if (config.output_traj and (trajs is not None)):
                     output['traj'] = compact(trajs[j])
                     output['timesteps'] = compact(timesteps)
                     output['alphas'] = compact(alphas)
                     output['sigmas'] = compact(sigmas)
+
                 torch.save(output, os.path.join(config.save_dir, f"{gidx}.pt"))
 
             pbar.update(1)
 
     pbar.close()
     barrier(local)
+
+    # rank0에서만 NPZ 생성
+    if rank == 0 and config.build_npz:
+        out_npz_path = Path(config.save_dir) / "samples.npz"
+        build_npz_from_pngs(Path(config.save_dir), out_npz_path, config.n_samples)
+        print(f"NPZ built: {out_npz_path}", flush=True)
+
     if rank == 0:
         print(f"Done. Saved to: {config.save_dir}", flush=True)
     if dist.is_available() and dist.is_initialized():
