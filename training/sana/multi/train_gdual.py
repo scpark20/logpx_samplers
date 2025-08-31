@@ -30,8 +30,7 @@ args = get_args()
 # ===============================
 config = EasyDict()
 config.backbone      = 'SANA'
-config.valid_pt_dir  = '/dataset/sana/valid4.5_100'
-config.batch_size    = 10
+config.batch_size    = 1
 config.n_valid       = 100
 config.CFG           = 4.5
 config.latent_size   = (32, 16, 16)
@@ -48,7 +47,7 @@ config.n_clips       = args.n_clips
 # -----------------------------
 
 # Loss
-config.losses = ['clip']
+config.losses = ['cosine']
 config.main_loss = 'clip'
 
 os.makedirs(config.log_dir, exist_ok=True)
@@ -129,19 +128,6 @@ scheduler = CosineAnnealingLR(
 print('solver/optimizer')
 
 # ===============================
-# Dataset / Dataloader
-# ===============================
-from torch.utils.data import DataLoader
-from datasets.pt_dataset import PtDataset
-
-valid_dataset = PtDataset(config.valid_pt_dir)
-print('len(valid_dataset) :', len(valid_dataset))
-
-valid_loader = DataLoader(valid_dataset, batch_size=config.batch_size, shuffle=False)
-print('dataloaders ready')
-
-
-# ===============================
 # Utils
 # ===============================
 def abort_if_bad(tag, value, step=None):
@@ -172,18 +158,18 @@ def get_clip_loss(raw_output, targets):
     return torch.mean(torch.stack(loss_list))
 
 @torch.no_grad()
-def get_valid_loss(valid_loader, device, solver):
+def get_valid_loss(prompts, device, solver):
     solver.eval()
     losses = []
-    for i, batch in enumerate(valid_loader):
-        noises = batch['noise'].to(device, non_blocking=True)
-        conds  = batch['cond']
+    for i, prompt in enumerate(prompts):
+        noises = torch.randn(1, *config.latent_size).to(device, non_blocking=True)
+        conds = [prompt]
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.no_grad(), torch.autocast(device_type='cuda', dtype=torch.bfloat16):
             latent_pred = solver.sample(noises, model_fn)['samples']
-            if 'clip' == config.main_loss:
+            if 'cosine' in config.losses:
                 sample_pred = model.decode_vae(latent_pred, raw_output=True)['raw_output']
-                loss = clip.get_clip_loss(sample_pred, conds)
+                loss = clip.get_cossim_loss(sample_pred, conds)
                 losses.append(loss.item())
 
     return np.mean(losses)
@@ -192,7 +178,8 @@ def get_valid_loss(valid_loader, device, solver):
 def do_train_loop(device, solver, optimizer, global_step):
     solver.train()
     if config.main_loss == 'clip':
-        prompts = np.load('prompts/mscoco2017.npz')['arr_0'].tolist()
+        data = np.load('prompts/mscoco2014_train.npz')['arr_0'].tolist()
+        prompts = [d[1] for d in data]
         pbar = tqdm(range(1000))
     
     for _, batch in enumerate(pbar):
@@ -233,7 +220,9 @@ def main():
 
     global_step = 0
     while True:
-        loss = get_valid_loss(valid_loader, device, solver)
+        data = np.load('prompts/mscoco2014_valid.npz')['arr_0'].tolist()
+        prompts = [d[1] for d in data][:config.n_valid]
+        loss = get_valid_loss(prompts, device, solver)
         writer.add_scalar('valid_loss', loss, global_step)
         save_checkpoint(global_step, config.log_dir, solver, optimizer) 
 
