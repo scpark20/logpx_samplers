@@ -11,8 +11,7 @@ class PixArtSigma(Backbone):
         self,
         device: Union[str, torch.device] = 'cuda',
         dtype: torch.dtype = torch.bfloat16,
-        model_id: str = "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
-        #model_id: str = "PixArt-alpha/PixArt-Sigma-XL-2-512-MS",
+        model_id: str = "PixArt-alpha/PixArt-Sigma-XL-2-512-MS",
         trainable = False
     ):
         super().__init__(trainable)
@@ -28,17 +27,24 @@ class PixArtSigma(Backbone):
             submod.to(dtype)
             submod.eval()
 
+    def set_freeze(self):
+        for submod in (self.pipe.vae, self.pipe.transformer):
+            submod.eval()
+            for p in submod.parameters():  # 확실히 freeze
+                p.requires_grad_(False)
+
     def prepare_noise(
         self, seeds: List[int],
     ) -> torch.Tensor:
         """
         Generate initial Gaussian noise in latent space using numpy.
         """
-        C = self.pipe.transformer.config.in_channels
-        height = width = self.pipe.transformer.config.sample_size
-        shape = (C, height, width)
-        noise = np.stack([np.random.RandomState(s).randn(*shape) for s in seeds], axis=0)
-        return torch.from_numpy(noise).to(self.device).to(torch.float32)
+        with self.context:
+            C = self.pipe.transformer.config.in_channels
+            height = width = self.pipe.transformer.config.sample_size
+            shape = (C, height, width)
+            noise = np.stack([np.random.RandomState(s).randn(*shape) for s in seeds], axis=0)
+            return torch.from_numpy(noise).to(self.device).to(torch.float32)
 
     @torch.inference_mode()
     def encode(
@@ -59,42 +65,53 @@ class PixArtSigma(Backbone):
     def decode_vae(
         self,
         latents: torch.Tensor,
+        raw_output=True,
+        pil_output=False,
         output_type: str = 'pil'
     ) -> Union[torch.Tensor, Image.Image]:
         """
         Decode latent tensor to image.
         """
-        
-        lat = (latents / self.pipe.vae.config.scaling_factor).to(self.dtype)
-        img_tensor = self.pipe.vae.decode(lat, return_dict=False)[0]
-        return self.pipe.image_processor.postprocess(img_tensor, output_type=output_type)
+        outputs = {}
+        with self.context:
+            lat = (latents / self.pipe.vae.config.scaling_factor).to(self.dtype)
+            img_tensor = self.pipe.vae.decode(lat, return_dict=False)[0]
+            if raw_output:
+                outputs['raw_output'] = img_tensor
+            if pil_output:
+                outputs['pil_output'] = self.pipe.image_processor.postprocess(img_tensor, output_type=output_type)
+        return outputs
 
-    @torch.inference_mode()
+    def get_noise_schedule(self):
+        noise_schedule = NoiseScheduleVP(schedule="discrete", betas=self.pipe.scheduler.betas, dtype=self.dtype)
+        return noise_schedule
+
+    def get_noise(self, *, batch_size=None, seeds=None):
+        assert batch_size is not None or seeds is not None
+        if seeds is None:
+            seeds = [42 for _ in range(batch_size)]
+        
+        noises = self.prepare_noise(seeds)
+        return noises
+
     def get_model_fn(
         self,
+        noise_schedule,
         pos_conds: List[str],
         neg_conds: Optional[List[str]] = None,
         guidance_scale: float = 4.5,
-        seeds: Optional[List[int]] = None,
     ) -> Tuple[callable, NoiseScheduleVP, torch.Tensor]:
-        batch_size = len(pos_conds)
-        if seeds is None:
-            seeds = [42 for _ in range(batch_size)]
-        assert len(seeds) == batch_size
-
         embeds, attn_mask, neg_embeds, neg_mask = self.encode(pos_conds, neg_conds)
-        latents = self.prepare_noise(seeds)
-        noise_schedule = NoiseScheduleVP(schedule="discrete", betas=self.pipe.scheduler.betas, dtype=self.dtype)
-
-        @torch.inference_mode()
+        
         def inner_model_fn(x, t, cond, **kwargs):
-            x = x.to(kwargs['dtype'])
-            mask = torch.cat([kwargs['neg_mask'], kwargs['attn_mask']], dim=0)
-            added_cond_kwargs = {"resolution": None, "aspect_ratio": None}
-            pred = self.pipe.transformer(x, timestep=t, encoder_hidden_states=cond, encoder_attention_mask=mask,
-                                        added_cond_kwargs=added_cond_kwargs, return_dict=False)[0]
-            pred = pred.chunk(2, dim=1)[0]
-            return pred
+            with self.context:
+                x = x.to(kwargs['dtype'])
+                mask = torch.cat([kwargs['neg_mask'], kwargs['attn_mask']], dim=0)
+                added_cond_kwargs = {"resolution": None, "aspect_ratio": None}
+                pred = self.pipe.transformer(x, timestep=t, encoder_hidden_states=cond, encoder_attention_mask=mask,
+                                            added_cond_kwargs=added_cond_kwargs, return_dict=False)[0]
+                pred = pred.chunk(2, dim=1)[0]
+                return pred
         
         model_fn = model_wrapper(
                 inner_model_fn,
@@ -107,4 +124,4 @@ class PixArtSigma(Backbone):
                 guidance_scale=guidance_scale,
         )
 
-        return model_fn, noise_schedule, latents
+        return model_fn

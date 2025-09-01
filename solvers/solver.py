@@ -64,29 +64,6 @@ class Solver(nn.Module):
         x0 = torch.clamp(x0, -s, s) / s
         return x0    
 
-    def noise_prediction_fn(self, x, t):
-        """
-        Return the noise prediction model.
-        """
-        return self.model(x, t)
-
-    def data_prediction_fn(self, x, t):
-        """
-        Return the data prediction model (with corrector).
-        """
-        noise = self.noise_prediction_fn(x, t)
-        alpha_t, sigma_t = self.noise_schedule.marginal_alpha(t), self.noise_schedule.marginal_std(t)
-        x0 = (x - sigma_t * noise) / alpha_t
-        if self.correcting_x0_fn is not None:
-            x0 = self.correcting_x0_fn(x0, t)
-        return x0
-    
-    def vector_prediction_fn(self, x, t):
-        noise = self.model(x, t)
-        alpha_t, sigma_t = self.noise_schedule.marginal_alpha(t), self.noise_schedule.marginal_std(t)
-        vector = (x - noise) / -(1 - sigma_t)
-        return vector
-
     def checkpoint_model_fn(self, x, t):
         with save_on_cpu(pin_memory=True):
             y = checkpoint(self.model_fn, x, t, use_reentrant=False)
@@ -97,13 +74,21 @@ class Solver(nn.Module):
         Convert the model to the vector prediction model, the noise prediction model or the data prediction model.
         """
         if self.algorithm_type == "data_prediction":
-            return self.data_prediction_fn(x, t)
+            noise = self.model(x, t)
+            alpha_t, sigma_t = self.noise_schedule.marginal_alpha(t), self.noise_schedule.marginal_std(t)
+            x0 = (x - sigma_t * noise) / alpha_t
+            if self.correcting_x0_fn is not None:
+                x0 = self.correcting_x0_fn(x0, t)
+            return x0
         elif self.algorithm_type == "noise_prediction":
-            return self.noise_prediction_fn(x, t)
+            return self.model(x, t)
         elif self.algorithm_type == "vector_prediction":
-            return self.vector_prediction_fn(x, t)
+            noise = self.model(x, t)
+            alpha_t, sigma_t = self.noise_schedule.marginal_alpha(t), self.noise_schedule.marginal_std(t)
+            vector = (x - noise) / -(1 - sigma_t)
+            return vector
         elif self.algorithm_type == "dual_prediction":
-            noise = self.noise_prediction_fn(x, t)
+            noise = self.model(x, t)
             alpha_t = self.noise_schedule.marginal_alpha(t)
             sigma_t = self.noise_schedule.marginal_std(t)
             x0 = (x - sigma_t * noise) / alpha_t

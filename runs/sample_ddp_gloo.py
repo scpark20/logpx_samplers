@@ -39,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--output_tf_inception',    action='store_true', default=False)
     parser.add_argument('--output_sample',          action='store_true',  default=False)
     parser.add_argument('--output_clip',            action='store_true',  default=False)
+    parser.add_argument('--output_clip_score',      action='store_true',  default=False)
     parser.add_argument('--output_png', action='store_true', default=False,
                         help='Decode VAE output and save PNGs to save_dir as {gidx:06d}.png')
     parser.add_argument('--build_npz', action='store_true', default=False,
@@ -133,6 +134,9 @@ def get_solver(config: EasyDict):
     if config.solver == 'DS-Solver_DDPM':
         from solvers.competing.ds.ds_solver_ddpm import DS_Solver
         return DS_Solver
+    if config.solver == 'DS-Solver_Flow':
+        from solvers.competing.ds.ds_solver_flow import DS_Solver
+        return DS_Solver
     if config.solver == 'DDPM-Solver':
         from solvers.others.ddpm_solver import DDPM_Solver
         return DDPM_Solver
@@ -225,7 +229,7 @@ def main():
         inception = FIDInception().to(device)
     if config.output_clean_inception:
         clean_inception = CleanFIDInception().to(device)
-    if config.output_clip:
+    if config.output_clip or config.output_clip_score:
         clip = CLIPEmbedder(device=getattr(model, "device", device))
 
     # 전역 인덱스 샤딩 (seed = seed_offset + global_idx 유지)
@@ -264,7 +268,7 @@ def main():
             needs_decode = (
                 config.output_png or
                 config.output_inception or config.output_clean_inception or
-                config.output_tf_inception or config.output_clip
+                config.output_tf_inception or config.output_clip or config.output_clip_score
             )
             if needs_decode:
                 decoded = model.decode_vae(outputs['samples'], raw_output=True, pil_output=True)
@@ -279,6 +283,8 @@ def main():
                 tf_inception_features = torch.from_numpy(tf_feats).to("cpu", dtype=torch.float32)
             if config.output_clip:
                 clip_features = clip.encode_image(decoded['raw_output']).detach().cpu()
+            if config.output_clip_score:
+                clip_scores = 1 - clip.get_cossim_loss(decoded['raw_output'], conds, clamp_mode='hard', reduction='none').detach().cpu()
 
             samples = outputs['samples'].detach().cpu()
             if config.output_noise:
@@ -312,6 +318,8 @@ def main():
                     output['tf_inception_feature'] = compact(tf_inception_features[j])
                 if config.output_clip:
                     output['clip_feature'] = compact(clip_features[j])
+                if config.output_clip_score:
+                    output['clip_score'] = compact(clip_scores[j])
                 if config.output_noise:
                     output['noise'] = compact(noises[j])
                 if (config.output_traj and (trajs is not None)):

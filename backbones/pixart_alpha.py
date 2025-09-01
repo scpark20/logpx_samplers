@@ -1,19 +1,17 @@
 import torch
 import numpy as np
-from huggingface_hub import snapshot_download
-from lib.pipelines.gmdit_pipeline import GMDiTPipeline
-from lib.ops.gmflow_ops.gmflow_ops import gm_to_mean, gm_to_sample
+from diffusers import PixArtAlphaPipeline
 from typing import Optional, List, Tuple, Union
 from .backbone import Backbone
-from solvers.common import NoiseScheduleFlow, model_wrapper
+from solvers.common import NoiseScheduleVP, model_wrapper
 from PIL import Image
 
-class GMDiT(Backbone):
+class PixArtAlpha(Backbone):
     def __init__(
         self,
         device: Union[str, torch.device] = 'cuda',
         dtype: torch.dtype = torch.bfloat16,
-        repo_id: str = 'Lakonik/gmflow_imagenet_k8_ema',
+        model_id: str = "PixArt-alpha/PixArt-XL-2-512x512",
         trainable = False
     ):
         super().__init__(trainable)
@@ -21,12 +19,11 @@ class GMDiT(Backbone):
         self.dtype = dtype
 
         # Load and move pipeline
-        ckpt = snapshot_download(repo_id=repo_id)
-        self.pipe = GMDiTPipeline.from_pretrained(ckpt, variant='bf16', torch_dtype=dtype)
+        self.pipe = PixArtAlphaPipeline.from_pretrained(model_id, torch_dtype=dtype)
         self.pipe.to(self.device)
 
         # Cast submodules and set eval
-        for submod in (self.pipe.vae, self.pipe.transformer):
+        for submod in (self.pipe.vae, self.pipe.text_encoder, self.pipe.transformer):
             submod.to(dtype)
             submod.eval()
 
@@ -50,11 +47,27 @@ class GMDiT(Backbone):
             return torch.from_numpy(noise).to(self.device).to(torch.float32)
 
     @torch.inference_mode()
+    def encode(
+        self, pos_texts: List[str], neg_texts: Optional[List[str]] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Tokenize and encode positive and negative prompts for classifier-free guidance.
+        """
+        if neg_texts is None:
+            neg_texts = [""] * len(pos_texts)
+
+        embeds, attn_mask, neg_embeds, neg_mask = self.pipe.encode_prompt(prompt=pos_texts,
+                                    device=self.device, num_images_per_prompt=1,
+                                    do_classifier_free_guidance=True, negative_prompt=neg_texts)
+        return embeds, attn_mask, neg_embeds, neg_mask
+
+    @torch.inference_mode()
     def decode_vae(
         self,
         latents: torch.Tensor,
         raw_output=True,
         pil_output=False,
+        output_type: str = 'pil'
     ) -> Union[torch.Tensor, Image.Image]:
         """
         Decode latent tensor to image.
@@ -62,19 +75,15 @@ class GMDiT(Backbone):
         outputs = {}
         with self.context:
             lat = (latents / self.pipe.vae.config.scaling_factor).to(self.dtype)
-            samples = self.pipe.vae.decode(lat).sample
+            img_tensor = self.pipe.vae.decode(lat, return_dict=False)[0]
             if raw_output:
-                outputs['raw_output'] = samples
-
-            if pil_output:    
-                samples = (samples / 2 + 0.5).clamp(0, 1)
-                samples = samples.cpu().permute(0, 2, 3, 1).float().detach().numpy()
-                samples = self.pipe.numpy_to_pil(samples)
-                outputs['pil_output'] = samples
-            return outputs
+                outputs['raw_output'] = img_tensor
+            if pil_output:
+                outputs['pil_output'] = self.pipe.image_processor.postprocess(img_tensor, output_type=output_type)
+        return outputs
 
     def get_noise_schedule(self):
-        noise_schedule = NoiseScheduleFlow(schedule="discrete_flow")
+        noise_schedule = NoiseScheduleVP(schedule="discrete", betas=self.pipe.scheduler.betas, dtype=self.dtype)
         return noise_schedule
 
     def get_noise(self, *, batch_size=None, seeds=None):
@@ -88,30 +97,31 @@ class GMDiT(Backbone):
     def get_model_fn(
         self,
         noise_schedule,
-        pos_conds = [0],
-        guidance_scale: float = 1.4,
-    ) -> callable:
-        class_labels = torch.tensor(pos_conds, dtype=torch.long,device=self.device).reshape(-1)
-        class_null = torch.tensor([1000] * len(pos_conds), device=self.device)
-
+        pos_conds: List[str],
+        neg_conds: Optional[List[str]] = None,
+        guidance_scale: float = 4.5,
+    ) -> Tuple[callable, NoiseScheduleVP, torch.Tensor]:
+        embeds, attn_mask, neg_embeds, neg_mask = self.encode(pos_conds, neg_conds)
+        
         def inner_model_fn(x, t, cond, **kwargs):
             with self.context:
                 x = x.to(kwargs['dtype'])
-                gm = self.pipe.transformer(x, timestep=t, class_labels=cond)
-                gm_means = gm['means']
-                gm_logweights = gm['logweights']
-                gm_power = 1
-                mean = ((gm_logweights * gm_power).softmax(dim=-4) * gm_means).sum(dim=-4)
-                return mean
-            
+                mask = torch.cat([kwargs['neg_mask'], kwargs['attn_mask']], dim=0)
+                added_cond_kwargs = {"resolution": None, "aspect_ratio": None}
+                pred = self.pipe.transformer(x, timestep=t, encoder_hidden_states=cond, encoder_attention_mask=mask,
+                                            added_cond_kwargs=added_cond_kwargs, return_dict=False)[0]
+                pred = pred.chunk(2, dim=1)[0]
+                return pred
+        
         model_fn = model_wrapper(
                 inner_model_fn,
                 noise_schedule,
-                model_type="flow",
+                model_type="noise",
+                model_kwargs={"attn_mask": attn_mask, "neg_mask": neg_mask, "dtype": self.dtype},
                 guidance_type="classifier-free",
-                model_kwargs={"dtype": self.dtype},
-                condition=class_labels,
-                unconditional_condition=class_null,
+                condition=embeds,
+                unconditional_condition=neg_embeds,
                 guidance_scale=guidance_scale,
         )
+
         return model_fn

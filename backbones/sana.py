@@ -12,8 +12,6 @@ class SANA(Backbone):
         device: Union[str, torch.device] = 'cuda',
         dtype: torch.dtype = torch.bfloat16,
         model_id='Efficient-Large-Model/Sana_600M_512px_diffusers',
-        #model_id='Efficient-Large-Model/Sana_600M_1024px_diffusers',
-        #model_id: str = 'Efficient-Large-Model/SANA1.5_1.6B_1024px_diffusers',
         trainable = False
     ):
         super().__init__(trainable)
