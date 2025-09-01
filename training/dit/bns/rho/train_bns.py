@@ -18,7 +18,7 @@ from tqdm import tqdm
 # CLI: 요청대로 세 가지만 제어
 # ===============================
 def get_args():
-    p = argparse.ArgumentParser(description="DS training (only 3 overrides)")
+    p = argparse.ArgumentParser(description="BNS training (only 3 overrides)")
     p.add_argument('--n_steps',    type=int, default=3)
     p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
     return p.parse_args()
@@ -29,11 +29,11 @@ args = get_args()
 # Config (원문 유지 + 3가지만 덮어쓰기)
 # ===============================
 config = EasyDict()
-config.backbone      = 'SANA'
+config.backbone      = 'DiT'
 config.batch_size    = 10
 config.n_valid       = 100
-config.CFG           = 4.5
-config.latent_size   = (32, 16, 16)
+config.CFG           = 1.5
+config.latent_size   = (4, 32, 32)
 
 # LR & Scheduler
 config.base_lr       = 2e-3
@@ -43,24 +43,24 @@ config.total_steps   = 20*1000        # 전체 학습 스텝
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
 config.log_dir       = args.log_dir or config.log_dir
-config.train_pt_dir  = '/dataset/sana/train4.5_1k_traj'
-config.valid_pt_dir  = '/dataset/sana/valid4.5_100'
+config.train_pt_dir  = '/dataset/dit/train1.5_1k'
+config.valid_pt_dir  = '/dataset/dit/valid1.5_100'
 # -----------------------------
 
 # Loss
 config.classifier = EasyDict()
 config.losses = ['mse_loss']
-config.main_loss = 'traj_loss'
+config.main_loss = 'mse_loss'
 
 os.makedirs(config.log_dir, exist_ok=True)
 
 # ===============================
 # Model (frozen)
 # ===============================
-from backbones.sana import SANA
+from backbones.dit import DiT
 
-if config.backbone == 'SANA':
-    model = SANA(trainable=True)  # 내부 구현에 맞춰 유지
+if config.backbone == 'DiT':
+    model = DiT(trainable=True)  # 내부 구현에 맞춰 유지
     model.set_freeze()
 device = model.device
 print(model)
@@ -69,14 +69,14 @@ print('done')
 # ===============================
 # Solver / Optimizer / Scheduler
 # ===============================
-from solvers.competing.ds.ds_solver_flow import DS_Solver
+from solvers.competing.bns.bns_solver_rho import BNS_Solver
 
 noise_schedule = model.get_noise_schedule()
-solver = DS_Solver(noise_schedule,
+solver = BNS_Solver(noise_schedule,
         config.n_steps,
-        skip_type='time_uniform_flow',
-        flow_shift=3.0,
-        algorithm_type='vector_prediction',
+        skip_type='time_uniform',
+        flow_shift=1.0,
+        algorithm_type='dual_prediction',
         checkpoint=True).to(device)
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
 
@@ -143,13 +143,6 @@ def get_valid_loss(valid_loader, device, solver):
             losses.append(loss.item())
     return np.mean(losses)
 
-def interp_traj(X, t, s):
-    # X:(B,L,C,H,W), t,s: (L,),(M,) — 둘 다 내림차순(1→0) 가정
-    t, s = t.to(X.device), s.to(X.device)
-    i1 = torch.bucketize(-s, -t).clamp(1, t.numel()-1); i0 = i1 - 1
-    w  = ((s - t[i0]) / (t[i1] - t[i0])).to(X.dtype).view(1, -1, 1, 1, 1)
-    return torch.lerp(X[:, i0], X[:, i1], w)
-
 def do_train_loop(device, train_loader, solver, optimizer, global_step):
     solver.train()
     pbar = tqdm(train_loader)
@@ -161,18 +154,11 @@ def do_train_loop(device, train_loader, solver, optimizer, global_step):
         optimizer.zero_grad(set_to_none=True)
         noises  = batch['noise'].to(device, non_blocking=True)
         conds   = batch['cond']
-        #targets = batch['sample'].to(device, non_blocking=True)
-        teacher_traj = batch['traj'].to(device, non_blocking=True)
-        teacher_timesteps = batch['timesteps'][0].to(device, non_blocking=True)
+        targets = batch['sample'].to(device, non_blocking=True)        
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-            outputs = solver.sample(noises, model_fn, output_traj=True)
-
-        if config.main_loss == 'traj_loss':
-            target_traj = interp_traj(teacher_traj, teacher_timesteps, outputs['timesteps'])
-            mse_loss = F.mse_loss(target_traj, outputs['traj'])
-            huber_loss = F.huber_loss(teacher_traj[:, -1], outputs['traj'][:, -1], delta=1e-3) * 1000.0
-            loss = mse_loss + huber_loss    
+            latent_pred = solver.sample(noises, model_fn)['samples']
+            loss = torch.log(F.mse_loss(latent_pred, targets))
                 
         abort_if_bad("train", loss, global_step)  # ← 즉시 중단
         loss.backward()

@@ -10,21 +10,18 @@ class BNS_Solver(Solver):
         self,
         noise_schedule,
         steps,
-        skip_type="time_uniform_flow",
+        skip_type="time_uniform",
         flow_shift=1.0,
         algorithm_type="dual_prediction",
         checkpoint=False,
-        k=0.5,
         **kwargs
     ):
-        assert algorithm_type == 'dual_prediction'
         super().__init__(noise_schedule, algorithm_type)
 
         self.steps = steps
         self.skip_type = skip_type
         self.flow_shift = flow_shift
         self.checkpoint = checkpoint
-        self.k = k
         
         t_0 = 1.0 / noise_schedule.total_N
         t_T = noise_schedule.T
@@ -39,20 +36,26 @@ class BNS_Solver(Solver):
         
         device, dtype = x.device, x.dtype
         timesteps = self.learned_timesteps(device=device, dtype=dtype)  # <-- 학습된 ts
-        step_dt = timesteps[:-1] - timesteps[1:]
-        dalphas = self.noise_schedule.dalpha(timesteps, k=self.k)
-        dsigmas = self.noise_schedule.dsigma(timesteps, k=self.k)
-
+        # noise_schedule이 텐서를 받아들일 수 있어야 자동미분이 유지됩니다.
+        alphas = self.noise_schedule.marginal_alpha(timesteps)          # 벡터화된 구현 권장
+        sigmas = self.noise_schedule.marginal_std(timesteps)
+        dt = timesteps[1:] - timesteps[:-1]
+        delta_alphas = (alphas[1:] - alphas[:-1]) / dt
+        delta_sigmas = (sigmas[1:] - sigmas[:-1]) / dt
+        
         x0 = x
         vs = []
         for i in tqdm(range(self.steps), disable=os.getenv("TQDM", "False")):
-            xc, ec = self.checkpoint_model_fn(x, timesteps[i]) if self.checkpoint else self.model_fn(x, timesteps[i])
-            vc = (dalphas[i]*xc + dsigmas[i]*ec) * step_dt[i]
+            if self.algorithm_type == 'dual_prediction':
+                xc, ec = self.checkpoint_model_fn(x, timesteps[i]) if self.checkpoint else self.model_fn(x, timesteps[i])
+                vc = delta_alphas[i]*xc + delta_sigmas[i]*ec
+            elif self.algorithm_type == 'vector_prediction':
+                vc = self.checkpoint_model_fn(x, timesteps[i]) if self.checkpoint else self.model_fn(x, timesteps[i])
             vs.append(vc)
 
             x = x0 * self.a[i]
             for j in range(0, i+1):
-                x = x + vs[j] * self.b[i, j]
+                x = x + vs[j] * self.b[i, j] * dt[j]
             
         outputs = {'samples': x}
         return outputs
