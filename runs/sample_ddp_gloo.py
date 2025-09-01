@@ -93,6 +93,13 @@ def get_model(config: EasyDict):
         except TypeError:
             return PixArtSigma()
 
+    if config.model == 'PixArt-Alpha':
+        from backbones.pixart_alpha import PixArtAlpha
+        try:
+            return PixArtAlpha(dtype=dt)
+        except TypeError:
+            return PixArtAlpha()
+
     if config.model == 'DiT':
         from backbones.dit import DiT
         # DiT 백본은 dtype 인자를 지원 (이전 메시지의 클래스와 호환)
