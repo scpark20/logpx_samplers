@@ -23,6 +23,13 @@ scp -P 22223 scpark@220.117.157.23:/dataset/dit/stats.pt /dataset/dit
 # SANA
 mkdir -p /dataset/sana
 scp -P 22223 scpark@220.117.157.23:/dataset/sana/*.zip /dataset/sana
+scp -P 22223 scpark@220.117.157.23:/dataset/sana/train4.5_1k_traj.zip /dataset/sana
+scp -P 22223 scpark@220.117.157.23:/dataset/sana/valid4.5_100.zip /dataset/sana
+
+# GMDiT
+git submodule update --init --recursive
+pip install -U openmim
+mim install mmcv
 
 2. 압축풀기
 cd /dataset/sana
@@ -66,6 +73,7 @@ scp -P 22223 1.6B_1024px_valid4.5.zip scpark@220.117.157.23:/dataset/sana
 scp -P 22223 sana_valid4.5.zip scpark@220.117.157.23:/dataset
 scp -P 22223 valid4.5.zip scpark@220.117.157.23:/dataset/sana
 scp -P 22223 /dataset/sana/*.zip scpark@220.117.157.23:/dataset/sana/
+scp -P 22223 /dataset/sana/train4.5_1k.zip scpark@220.117.157.23:/dataset/sana/
 
 7. stats 받기
 scp -P 22223 scpark@220.117.157.23:/dataset/dit/stats.pt /dataset/dit/
