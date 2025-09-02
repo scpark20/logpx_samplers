@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os 
+import os, sys
 import math
 import argparse
 import numpy as np
@@ -14,11 +14,21 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
+GMFLOW = os.path.join("submodules", "GMFlow")
+sys.path.insert(0, GMFLOW)
+
 # (arch, weight_fullname) — 문자열 그대로 Classifier에 넘겨 사용
-MODELS_FOR_EXP = [
-  ("convnext_base",     "ConvNeXt_Base_Weights.IMAGENET1K_V1"),
-  ("vit_b_16",          "ViT_B_16_Weights.IMAGENET1K_V1"),
-  ("resnext101_32x8d", "ResNeXt101_32X8D_Weights.IMAGENET1K_V1")
+CLASSIFIER_MODELS = [
+  ("vit_b_16",          "ViT_B_16_Weights.IMAGENET1K_V1"),         # Vision Transformer (global self-attention)
+  ("convnext_base",     "ConvNeXt_Base_Weights.IMAGENET1K_V1"),    # Modern ConvNet (ConvNeXt blocks)
+  ("resnext101_32x8d",  "ResNeXt101_32X8D_Weights.IMAGENET1K_V1"), # Split-transform-merge (cardinality)
+  ("densenet201",       "DenseNet201_Weights.IMAGENET1K_V1"),      # Dense connectivity
+  ("inception_v3",      "Inception_V3_Weights.IMAGENET1K_V1"),     # Multi-branch inception modules
+  ("mobilenet_v3_large","MobileNet_V3_Large_Weights.IMAGENET1K_V1"),# Depthwise separable (mobile)
+  ("efficientnet_b3",   "EfficientNet_B3_Weights.IMAGENET1K_V1"),  # MBConv + compound scaling
+  ("regnet_y_8gf",      "RegNet_Y_8GF_Weights.IMAGENET1K_V1"),     # Design space–derived convnet
+  ("swin_b",            "Swin_B_Weights.IMAGENET1K_V1"),           # Hierarchical windowed transformer
+  ("maxvit_t",          "MaxVit_T_Weights.IMAGENET1K_V1"),         # Hybrid MBConv + block/grid attention
 ]
 
 # ===============================
@@ -27,6 +37,7 @@ MODELS_FOR_EXP = [
 def get_args():
     p = argparse.ArgumentParser(description="GDual training (only 3 overrides)")
     p.add_argument('--n_steps',    type=int, default=3)
+    p.add_argument('--n_classifiers',    type=int, default=1)
     p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
     return p.parse_args()
 
@@ -36,10 +47,10 @@ args = get_args()
 # Config (원문 유지 + 3가지만 덮어쓰기)
 # ===============================
 config = EasyDict()
-config.backbone      = 'DiT'
+config.backbone      = 'GMDiT'
 config.batch_size    = 10
 config.n_valid       = 100
-config.CFG           = 1.5
+config.CFG           = 1.4
 config.latent_size   = (4, 32, 32)
 
 # LR & Scheduler
@@ -50,6 +61,7 @@ config.total_steps   = 20*1000        # 전체 학습 스텝
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
 config.log_dir       = args.log_dir or config.log_dir
+config.n_classifiers = args.n_classifiers
 # -----------------------------
 
 # Loss
@@ -61,17 +73,18 @@ os.makedirs(config.log_dir, exist_ok=True)
 # ===============================
 # Model (frozen)
 # ===============================
-from backbones.dit import DiT
+from backbones.gmdit import GMDiT
 from utils.general_classifier import Classifier
 
-if config.backbone == 'DiT':
-    model = DiT(trainable=True)  # 내부 구현에 맞춰 유지
+if config.backbone == 'GMDiT':
+    model = GMDiT(trainable=True)  # 내부 구현에 맞춰 유지
     model.set_freeze()
 device = model.device
 print(model)
+
 if 'classifier' in config.losses:
     classifiers = []
-    for arch, weights in MODELS_FOR_EXP:
+    for arch, weights in CLASSIFIER_MODELS[:config.n_classifiers]:
         classifier = Classifier(
                 arch=arch,
                 weights=weights,
@@ -95,7 +108,8 @@ solver = GDual_Solver(
     steps=config.n_steps,
     transform=transform,
     param_extractor=extractor,
-    skip_type="time_uniform",
+    skip_type="time_uniform_flow",
+    flow_shift=1.0,
     pred_order=1,
     corr_order=2,
     order1_kappa=True,
@@ -103,7 +117,7 @@ solver = GDual_Solver(
     use_corrector=True,
     time_learning=True,
     train_mode=True,
-    checkpoint=False
+    checkpoint=True
 ).to(device)
 
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
@@ -161,7 +175,7 @@ def get_valid_loss(valid_noises, valid_conds, device, solver):
         conds = valid_conds[start:min(start+config.batch_size, len(valid_noises))]
         start += config.batch_size
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
-        with torch.no_grad(), torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+        with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
             latent_pred = solver.sample(noises, model_fn)['samples']
             if 'classifier' in config.losses:
                 outputs = model.decode_vae(latent_pred, raw_output=True)

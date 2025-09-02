@@ -49,7 +49,6 @@ class GMDiT(Backbone):
             noise = np.stack([np.random.RandomState(s).randn(*shape) for s in seeds], axis=0)
             return torch.from_numpy(noise).to(self.device).to(torch.float32)
 
-    @torch.inference_mode()
     def decode_vae(
         self,
         latents: torch.Tensor,
