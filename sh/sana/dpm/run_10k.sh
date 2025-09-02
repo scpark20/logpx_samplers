@@ -21,8 +21,8 @@ N_SAMPLES=10000
 SEED_OFFSET=0
 
 SOLVERS=("DPM-Solver")
-NFES=(3 4 5 6)
-CFGS=(1.5 2.5 3.5 4.5)
+NFES=(6 5 4 3)
+CFGS=(4.5 3.5 2.5 1.5)
 
 # 사용 GPU 개수 -> nproc
 IFS=',' read -ra _GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
