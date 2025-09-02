@@ -6,15 +6,16 @@ export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-1}
 STEPS=(7 5)
 N_CLASSIFIERS=(1 3 5 9)
 
-for s in "${STEPS[@]}"; do
-  for n in "${N_CLASSIFIERS[@]}"; do
+for n in "${N_CLASSIFIERS[@]}"; do
+  for s in "${STEPS[@]}"; do
+  
     LOG="logs/gmdit/multi/s${s}_n${n}"
 
-    # # 이미 로그 디렉토리가 있으면 스킵
-    # if [[ -d "$LOG" ]]; then
-    #   echo ">>> exists: $LOG — skipping"
-    #   continue
-    # fi
+    # 이미 로그 디렉토리가 있으면 스킵
+    if [[ -d "$LOG" ]]; then
+      echo ">>> exists: $LOG — skipping"
+      continue
+    fi
 
     echo ">>> n_steps=${s} -> ${LOG}"
     mkdir -p "$LOG"
