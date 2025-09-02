@@ -35,6 +35,7 @@ class DPM_Solver(Solver):
         correcting_xt_fn=None,
         thresholding_max_val=1.0,
         dynamic_thresholding_ratio=0.995,
+        **kwargs,
     ):
         """Construct a DPM-Solver.
 
