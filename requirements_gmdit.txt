@@ -1,0 +1,6 @@
+mmcls==0.25.0
+mmcv @ git+https://github.com/open-mmlab/mmcv.git@d409eedc816fccfb1c8d57e5eed5f03bd075f327
+mmdet==3.3.0
+mmengine==0.10.7
+mmgen @ git+https://github.com/Lakonik/mmgeneration.git@500a93e474638c87dcaf8fad94cfbe1ef29acd1f
+bitsandbytes==0.47.0
