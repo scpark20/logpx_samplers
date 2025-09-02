@@ -31,8 +31,8 @@ NPROC=${#_GPU_IDS[@]}
 BASE_OUT="samplings"   # SAVE_ROOT의 베이스
 
 for solver in "${SOLVERS[@]}"; do
-  for nfe in "${NFES[@]}"; do
-    for cfg in "${CFGS[@]}"; do
+  for cfg in "${CFGS[@]}"; do
+    for nfe in "${NFES[@]}"; do
       SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}"
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
