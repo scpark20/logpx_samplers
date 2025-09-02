@@ -170,7 +170,7 @@ def get_sampling_dir(config):
              if (m := re.match(rf'{re.escape(p)}_(\d+)$', d))]
             or [-1])    
     # 무시하고 덮어 쓰고 싶으면 -1 할당            
-    #i = -1
+    i = -1
     sampling_dir = os.path.join(r, f"{p}_{i+1}")
     os.makedirs(sampling_dir, exist_ok=True)        
     return sampling_dir
@@ -239,7 +239,7 @@ def main():
     if config.output_clean_inception:
         clean_inception = CleanFIDInception().to(device)
     if config.output_clip or config.output_clip_score:
-        clip = CLIPEmbedder(device=getattr(model, "device", device))
+        clip = CLIPEmbedder(device=device)
 
     # 전역 인덱스 샤딩 (seed = seed_offset + global_idx 유지)
     all_idx = list(range(config.n_samples))
@@ -304,7 +304,8 @@ def main():
             if config.output_clip:
                 clip_features = clip.encode_image(decoded['raw_output']).detach().cpu()
             if config.output_clip_score:
-                clip_scores = 1 - clip.get_cossim_loss(decoded['raw_output'], conds, clamp_mode='hard', reduction='none').detach().cpu()
+                with torch.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=torch.cuda.is_available()):
+                    clip_scores = 1 - clip.get_cossim_loss(decoded['raw_output'], conds, clamp_mode='hard', reduction='none').detach().cpu()
 
             samples = outputs['samples'].detach().cpu()
             if config.output_noise:

@@ -2,28 +2,27 @@
 set -e
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=$(python -c 'import torch;print(",".join(map(str, range(torch.cuda.device_count()))))')
 
 # 🔇 torchrun OMP 배너 억제(사전에 지정)
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=multi1
+TAG=dpm
 MODEL=SANA
 DATA=MSCOCO2014_valid
 BATCH_SIZE=1          # GPU당 배치
-ALGO=dual_prediction
+ALGO=data_prediction
 SKIP=time_uniform_flow
 FLOW_SHIFT=3.0
 ORDER=2
 N_SAMPLES=10000
 SEED_OFFSET=0
 
-SOLVERS=("Dual-Solver")
+SOLVERS=("DPM-Solver")
 NFES=(3 4 5 6)
-CFGS=(4.5)
-N_CLIPS=1
+CFGS=(1.5 2.5 3.5 4.5)
 
 # 사용 GPU 개수 -> nproc
 IFS=',' read -ra _GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
@@ -35,7 +34,6 @@ for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do
     for cfg in "${CFGS[@]}"; do
       SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}"
-      PT_DIR="logs/sana/multi/s${nfe}_n${N_CLIPS}"
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
@@ -51,8 +49,6 @@ for solver in "${SOLVERS[@]}"; do
           --order "$ORDER" \
           --data "$DATA" \
           --save_root "$SAVE_ROOT" \
-          --pt_dir "$PT_DIR" \
-          --pt_criterion "latest" \
           --n_samples "$N_SAMPLES" \
           --seed_offset "$SEED_OFFSET" \
           --batch_size "$BATCH_SIZE" \

@@ -10,19 +10,19 @@ export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
 TAG=ds
-MODEL=SANA
-DATA=MSCOCO2014_valid
+MODEL=GMDiT
+DATA=ImageNet
 BATCH_SIZE=10          # GPU당 배치
 ALGO=vector_prediction
 SKIP=time_uniform_flow
-FLOW_SHIFT=3.0
+FLOW_SHIFT=1.0
 ORDER=2
-N_SAMPLES=10000
+N_SAMPLES=50000
 SEED_OFFSET=0
 
 SOLVERS=("DS-Solver_Flow")
-NFES=(3 4 5 6)
-CFGS=(4.5)
+NFES=(9 7 5 3)
+CFGS=(1.4)
 
 # 사용 GPU 개수 -> nproc
 IFS=',' read -ra _GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
@@ -34,7 +34,7 @@ for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do
     for cfg in "${CFGS[@]}"; do
       SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}"
-      PT_DIR="logs/sana/ds/s${nfe}"
+      PT_DIR="logs/gmdit/ds/s${nfe}"
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
@@ -55,8 +55,7 @@ for solver in "${SOLVERS[@]}"; do
           --n_samples "$N_SAMPLES" \
           --seed_offset "$SEED_OFFSET" \
           --batch_size "$BATCH_SIZE" \
-          --output_inception \
-          --output_clip_score
+          --output_inception
     done
   done
 done
