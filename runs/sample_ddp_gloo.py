@@ -168,7 +168,9 @@ def get_sampling_dir(config):
     i = max([int(m.group(1))
              for d in os.listdir(r)
              if (m := re.match(rf'{re.escape(p)}_(\d+)$', d))]
-            or [-1])
+            or [-1])    
+    # 무시하고 덮어 쓰고 싶으면 -1 할당            
+    #i = -1
     sampling_dir = os.path.join(r, f"{p}_{i+1}")
     os.makedirs(sampling_dir, exist_ok=True)        
     return sampling_dir
@@ -254,6 +256,17 @@ def main():
             batch_indices = my_idx[ptr: ptr + config.batch_size]
             ptr += config.batch_size
 
+            all_exists = True
+            for gidx in batch_indices:
+                file = os.path.join(config.save_dir, f"{gidx}.pt")
+                if not os.path.exists(file):
+                    all_exists = False
+                    break        
+            if all_exists:
+                print('All Exists, ptr :', ptr)
+                pbar.update(1)
+                continue
+            
             conds = [data[i] for i in batch_indices]
             seeds = config.seed_offset + np.asarray(batch_indices, dtype=int)
 
