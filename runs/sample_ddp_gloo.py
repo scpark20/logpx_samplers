@@ -129,6 +129,9 @@ def get_solver(config: EasyDict):
     if config.solver == 'Dual-Solver':
         from solvers.taylor.solver.gdual_solver import GDual_Solver
         return GDual_Solver
+    if config.solver == 'Dual-Solver_Quad' or config.solver == 'Dual-Solver_Legendre':
+        from solvers.taylor.solver.gdual_solver_steps_list import GDual_Solver
+        return GDual_Solver    
     if config.solver == 'BNS-Solver':
         from solvers.competing.bns.bns_solver import BNS_Solver
         return BNS_Solver
@@ -277,14 +280,14 @@ def main():
             noise_schedule = model.get_noise_schedule()
             model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)#, cfg_channels=config.cfg_channels)
             noises = model.get_noise(seeds=seeds)
-            solver = Solver(noise_schedule, config.NFE, order=config.order,
+            solver = Solver(noise_schedule, steps=config.NFE, order=config.order,
                             skip_type=config.skip_type, flow_shift=config.flow_shift,
-                            algorithm_type=config.algorithm_type, k=config.k).to(device)
+                            algorithm_type=config.algorithm_type, k=config.k, solver=config.solver).to(device)
             if config.pt_dir is not None:
                 from utils.util import get_pt
                 best_pt = get_pt(config.pt_dir, config.pt_criterion)
                 state_dict = torch.load(best_pt, map_location='cpu', weights_only=False)['solver_state_dict']
-                solver.load_state_dict(state_dict, strict=True)
+                solver.load_state_dict(state_dict, strict=False)
 
             outputs = solver.sample(noises, model_fn, output_traj=config.output_traj)
 
