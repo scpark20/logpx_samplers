@@ -32,7 +32,7 @@ config = EasyDict()
 config.backbone      = 'PixArt-Alpha'
 config.batch_size    = 10
 config.n_valid       = 100
-config.CFG           = 4.5
+config.CFG           = 3.5
 config.latent_size   = (4, 64, 64)
 
 # LR & Scheduler
@@ -43,8 +43,8 @@ config.total_steps   = 20*1000        # 전체 학습 스텝
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
 config.log_dir       = args.log_dir or config.log_dir
-config.train_pt_dir  = '/dataset/pixart_alpha/train4.5_1k'
-config.valid_pt_dir  = '/dataset/pixart_alpha/valid4.5_100'
+config.train_pt_dir  = f'/dataset/pixart_alpha/train3.5_1k'
+config.valid_pt_dir  = '/dataset/pixart_alpha/valid3.5_100'
 # -----------------------------
 
 # Loss
