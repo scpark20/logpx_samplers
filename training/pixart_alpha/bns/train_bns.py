@@ -69,7 +69,7 @@ print('done')
 # ===============================
 # Solver / Optimizer / Scheduler
 # ===============================
-from solvers.competing.bns.bns_solver import BNS_Solver
+from solvers.competing.bns.bns_solver_sep import BNS_Solver
 
 noise_schedule = model.get_noise_schedule()
 solver = BNS_Solver(noise_schedule,
