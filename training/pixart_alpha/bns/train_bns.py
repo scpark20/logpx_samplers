@@ -43,8 +43,8 @@ config.total_steps   = 20*1000        # 전체 학습 스텝
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
 config.log_dir       = args.log_dir or config.log_dir
-config.train_pt_dir  = f'/dataset/pixart_alpha/train3.5_1k'
-config.valid_pt_dir  = '/dataset/pixart_alpha/valid3.5_100'
+config.train_pt_dir  = '/dataset/pixart_alpha3.5/train3.5_1k'
+config.valid_pt_dir  = '/dataset/pixart_alpha3.5/valid3.5_100'
 # -----------------------------
 
 # Loss
@@ -76,7 +76,7 @@ solver = BNS_Solver(noise_schedule,
         config.n_steps,
         skip_type='time_uniform',
         algorithm_type='dual_prediction',
-        checkpoint=True).to(device)
+        checkpoint=False).to(device)
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
 
 # ---- Scheduler: Pure Cosine ----
