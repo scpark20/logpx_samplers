@@ -126,7 +126,7 @@ class GDual_Solver(Solver):
         return out
 
     # ---------- sampling ----------
-    def sample(self, x, model_fn, **kwargs):
+    def sample(self, x, model_fn, output_x0=False, **kwargs):
         self.set_model_fn(model_fn)
 
         device, dtype = x.device, x.dtype
@@ -147,11 +147,15 @@ class GDual_Solver(Solver):
         if self.scale_learning:
             x = x * self.scale
         x_pred = x_corr = x
+        if output_x0:
+            x0_list = []
         xn, en, xp, ep = None, None, None, None
 
         context = nullcontext() if self.train_mode else torch.no_grad()
         with context:
             xc, ec = self.checkpoint_model_fn(x_pred, timesteps[0]) if self.train_mode and self.checkpoint else self.model_fn(x_pred, timesteps[0])
+            if output_x0:
+                x0_list.append(xc)
             params, hidden = self.param_extractor({'x':xc, 'e':ec, 't': timesteps[0:2], 'h': None, 'step': 0})
             
             #use_tqdm = os.getenv("DPM_TQDM", "1") not in ("0","False","false","")
@@ -167,6 +171,8 @@ class GDual_Solver(Solver):
                 
                 if i < self.steps - 1:
                     xn, en = self.checkpoint_model_fn(x_pred, timesteps[i+1]) if self.train_mode and self.checkpoint else self.model_fn(x_pred, timesteps[i+1]) 
+                    if output_x0:
+                        x0_list.append(xn)
                     params, hidden = self.param_extractor({'x':xn, 'e':en, 't': timesteps[i+1:i+3], 'h': hidden, 'step': i+1})
                 else:
                     break
@@ -186,4 +192,9 @@ class GDual_Solver(Solver):
                 xc, ec = xn, en
 
         outputs = {'samples': x_pred}
+        if output_x0:
+            x0_list.append(x_pred)
+            # (b, steps+1, c, h, w)
+            x0_list = torch.stack(x0_list, dim=1)
+            outputs['x0_list'] = x0_list
         return outputs
