@@ -48,7 +48,7 @@ args = get_args()
 # ===============================
 config = EasyDict()
 config.backbone      = 'GMDiT'
-config.batch_size    = 10
+config.batch_size    = 5
 config.n_valid       = 100
 config.CFG           = 1.4
 config.latent_size   = (4, 32, 32)
