@@ -158,6 +158,10 @@ def get_data(config: EasyDict):
         data = np.load('prompts/mscoco2014_valid.npz')['arr_0'].tolist()
         data = [d[1] for d in data]
         return data
+    if config.data == 'MSCOCO2014_valid_30k':
+        data = np.load('prompts/mscoco2014_valid_30k.npz')['arr_0'].tolist()
+        data = [d[1] for d in data]
+        return data
     if config.data == 'ImageNet':
         return [i%1000 for i in range(config.n_samples)]
     raise ValueError(f"Unknown data: {config.data}")
