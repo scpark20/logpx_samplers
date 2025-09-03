@@ -198,3 +198,73 @@ class GDual_Solver(Solver):
             x0_list = torch.stack(x0_list, dim=1)
             outputs['x0_list'] = x0_list
         return outputs
+
+    # ---------- sampling ----------
+    def sample_random(self, x, model_fn, random_offset=0, **kwargs):
+        self.set_model_fn(model_fn)
+
+        device, dtype = x.device, x.dtype
+        timesteps = self.learned_timesteps(device=device, dtype=dtype)
+        if not self.time_learning:
+            timesteps = timesteps.detach()
+
+        # noise schedule (벡터화)
+        alphas = self.noise_schedule.marginal_alpha(timesteps)
+        sigmas = self.noise_schedule.marginal_std(timesteps)
+        
+        # 로그/비율 선계산
+        log_alpha, log_sigma = torch.log(alphas), torch.log(sigmas)
+        log_alpha_ratio, log_sigma_ratio = log_alpha[1:] - log_alpha[:-1], log_sigma[1:] - log_sigma[:-1]
+
+        # 초기 상태
+        if self.scale_learning:
+            x = x * self.scale
+        x_pred = x_corr = x
+        idx = torch.randint(random_offset, self.steps+1, (len(x),), device=x.device)
+        x0_list = torch.zeros_like(x)
+        xn, en, xp, ep = None, None, None, None
+
+        context = nullcontext() if self.train_mode else torch.no_grad()
+        with context:
+            xc, ec = self.checkpoint_model_fn(x_pred, timesteps[0]) if self.train_mode and self.checkpoint else self.model_fn(x_pred, timesteps[0])
+            x0_list = x0_list + xc * (idx == 0)[:, None, None, None]
+            params, hidden = self.param_extractor({'x':xc, 'e':ec, 't': timesteps[0:2], 'h': None, 'step': 0})
+            
+            #use_tqdm = os.getenv("DPM_TQDM", "1") not in ("0","False","false","")
+            #for i in tqdm(range(self.steps), disable=not use_tqdm):
+            for i in range(self.steps):
+                pred_order = min(i + 1, self.steps - i, self.pred_order) if self.lower_order_final else min(i + 1, self.pred_order)
+
+                # Predictor
+                x_pred = self.get_next_sample(
+                    x_corr, (xn, xc, xp), (en, ec, ep), i,
+                    log_alpha, log_sigma, log_alpha_ratio, log_sigma_ratio, params[:, 0], pred_order, corrector=False
+                )
+                
+                if i < self.steps - 1:
+                    xn, en = self.checkpoint_model_fn(x_pred, timesteps[i+1]) if self.train_mode and self.checkpoint else self.model_fn(x_pred, timesteps[i+1]) 
+                    x0_list = x0_list + xn * (idx == (i+1))[:, None, None, None]
+                    params, hidden = self.param_extractor({'x':xn, 'e':en, 't': timesteps[i+1:i+3], 'h': hidden, 'step': i+1})
+                else:
+                    break
+
+                # Corrector
+                corr_order = self.corr_order
+                if self.use_corrector:
+                    x_corr = self.get_next_sample(
+                        x_corr, (xn, xc, xp), (en, ec, ep), i,
+                        log_alpha, log_sigma, log_alpha_ratio, log_sigma_ratio, params[:, 1], corr_order, corrector=True
+                    )
+                else:
+                    x_corr = x_pred
+
+                # shift
+                xp, ep = xc, ec
+                xc, ec = xn, en
+
+        x0_list = x0_list + x_pred * (idx == self.steps)[:, None, None, None]
+        outputs = {'samples': x0_list,
+        }
+        
+        return outputs
+
