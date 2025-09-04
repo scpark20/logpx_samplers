@@ -161,10 +161,10 @@ def get_valid_loss(valid_loader, device, solver):
         with torch.no_grad():
             latent_pred = solver.sample(noises, model_fn)['samples']
             decoded1 = model.decode_vae(latent_pred, raw_output=True)
-            inception_features1 = inception.encode(decoded1['raw_outputs'])
+            inception_features1 = inception.encode(decoded1['raw_output'])
 
             decoded2 = model.decode_vae(targets, raw_output=True)
-            inception_features2 = inception.encode(decoded2['raw_outputs'])
+            inception_features2 = inception.encode(decoded2['raw_output'])
             loss = F.mse_loss(inception_features1, inception_features2)
             losses.append(loss.item())
     return np.mean(losses)
@@ -185,10 +185,10 @@ def do_train_loop(device, train_loader, solver, optimizer, global_step):
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
             latent_pred = solver.sample(noises, model_fn)['samples']
             decoded1 = model.decode_vae(latent_pred, raw_output=True)
-            inception_features1 = inception.encode(decoded1['raw_outputs'])
+            inception_features1 = inception.encode(decoded1['raw_output'])
 
             decoded2 = model.decode_vae(targets, raw_output=True)
-            inception_features2 = inception.encode(decoded2['raw_outputs'])
+            inception_features2 = inception.encode(decoded2['raw_output'])
             loss = F.mse_loss(inception_features1, inception_features2)
                 
         abort_if_bad("train", loss, global_step)  # ← 즉시 중단
