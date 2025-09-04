@@ -126,7 +126,7 @@ class GDual_Solver(Solver):
         return out
 
     # ---------- sampling ----------
-    def sample(self, x, model_fn, output_x0=False, **kwargs):
+    def sample(self, x, model_fn, output_x0=False, output_traj=False, **kwargs):
         self.set_model_fn(model_fn)
 
         device, dtype = x.device, x.dtype
@@ -149,6 +149,8 @@ class GDual_Solver(Solver):
         x_pred = x_corr = x
         if output_x0:
             x0_list = []
+        if output_traj:
+            trajs = [x_corr] 
         xn, en, xp, ep = None, None, None, None
 
         context = nullcontext() if self.train_mode else torch.no_grad()
@@ -187,9 +189,15 @@ class GDual_Solver(Solver):
                 else:
                     x_corr = x_pred
 
+                if output_traj:
+                    trajs.append(x_corr)
+
                 # shift
                 xp, ep = xc, ec
                 xc, ec = xn, en
+
+        if output_traj:
+            trajs.append(x_pred)
 
         outputs = {'samples': x_pred}
         if output_x0:
@@ -197,6 +205,9 @@ class GDual_Solver(Solver):
             # (b, steps+1, c, h, w)
             x0_list = torch.stack(x0_list, dim=1)
             outputs['x0_list'] = x0_list
+        if output_traj:
+            outputs['traj'] = torch.stack(trajs, dim=1)
+            outputs['timesteps'] = timesteps
         return outputs
 
     # ---------- sampling ----------
