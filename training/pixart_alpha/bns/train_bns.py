@@ -78,7 +78,7 @@ solver = BNS_Solver(noise_schedule,
         config.n_steps,
         skip_type='time_uniform',
         algorithm_type='dual_prediction',
-        checkpoint=True).to(device)
+        checkpoint=False).to(device)
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
 
 # ---- Scheduler: Pure Cosine ----
