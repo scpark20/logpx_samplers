@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os, sys
+import os 
 import math
 import argparse
 import numpy as np
@@ -10,35 +10,8 @@ from easydict import EasyDict
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-
-GMFLOW = os.path.join("submodules", "GMFlow")
-sys.path.insert(0, GMFLOW)
-
-CLASSIFIER_MODELS = [
-  ("vit_h_14",          "ViT_H_14_Weights.IMAGENET1K_SWAG_E2E_V1"),  # Rank: 1,   Acc@5: 98.694
-  ("regnet_y_128gf",    "RegNet_Y_128GF_Weights.IMAGENET1K_SWAG_LINEAR_V1"),  # Rank: 6,   Acc@5: 97.844
-  ("regnet_y_16gf",     "RegNet_Y_16GF_Weights.IMAGENET1K_SWAG_LINEAR_V1"),   # Rank: 12,  Acc@5: 97.244
-  ("convnext_base",     "ConvNeXt_Base_Weights.IMAGENET1K_V1"),               # Rank: 18,  Acc@5: 96.870
-  ("efficientnet_b5",   "EfficientNet_B5_Weights.IMAGENET1K_V1"),             # Rank: 24,  Acc@5: 96.628
-  ("regnet_y_16gf",     "RegNet_Y_16GF_Weights.IMAGENET1K_V2"),               # Rank: 30,  Acc@5: 96.328
-  ("swin_v2_t",         "Swin_V2_T_Weights.IMAGENET1K_V1"),                   # Rank: 36,  Acc@5: 96.132
-  ("swin_t",            "Swin_T_Weights.IMAGENET1K_V1"),                      # Rank: 42,  Acc@5: 95.776
-  ("regnet_y_32gf",     "RegNet_Y_32GF_Weights.IMAGENET1K_V1"),               # Rank: 48,  Acc@5: 95.340
-  ("regnet_y_8gf",      "RegNet_Y_8GF_Weights.IMAGENET1K_V1"),                # Rank: 54,  Acc@5: 95.048
-  ("regnet_y_3_2gf",    "RegNet_Y_3_2GF_Weights.IMAGENET1K_V1"),              # Rank: 60,  Acc@5: 94.576
-  ("resnet152",         "ResNet152_Weights.IMAGENET1K_V1"),                   # Rank: 66,  Acc@5: 94.046
-  ("resnet101",         "ResNet101_Weights.IMAGENET1K_V1"),                   # Rank: 72,  Acc@5: 93.546
-  ("regnet_y_800mf",    "RegNet_Y_800MF_Weights.IMAGENET1K_V1"),              # Rank: 78,  Acc@5: 93.136
-  ("mobilenet_v3_large","MobileNet_V3_Large_Weights.IMAGENET1K_V2"),          # Rank: 84,  Acc@5: 92.566
-  ("regnet_y_400mf",    "RegNet_Y_400MF_Weights.IMAGENET1K_V1"),              # Rank: 90,  Acc@5: 91.716
-  ("regnet_x_400mf",    "RegNet_X_400MF_Weights.IMAGENET1K_V1"),              # Rank: 96,  Acc@5: 90.950
-  ("mobilenet_v2",      "MobileNet_V2_Weights.IMAGENET1K_V1"),                # Rank: 102, Acc@5: 90.286
-  ("shufflenet_v2_x1_0","ShuffleNet_V2_X1_0_Weights.IMAGENET1K_V1"),          # Rank: 108, Acc@5: 88.316
-  ("alexnet",           "AlexNet_Weights.IMAGENET1K_V1"),                     # Rank: 114, Acc@5: 79.066
-]
 
 # ===============================
 # CLI: 요청대로 세 가지만 제어
@@ -46,7 +19,7 @@ CLASSIFIER_MODELS = [
 def get_args():
     p = argparse.ArgumentParser(description="GDual training (only 3 overrides)")
     p.add_argument('--n_steps',    type=int, default=3)
-    p.add_argument('--n_classifiers',    type=int, default=0)
+    p.add_argument('--n_clips',    type=int, default=1)
     p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
     return p.parse_args()
 
@@ -56,11 +29,11 @@ args = get_args()
 # Config (원문 유지 + 3가지만 덮어쓰기)
 # ===============================
 config = EasyDict()
-config.backbone      = 'GMDiT'
+config.backbone      = 'SANA'
 config.batch_size    = 10
 config.n_valid       = 100
-config.CFG           = 1.4
-config.latent_size   = (4, 32, 32)
+config.CFG           = 4.5
+config.latent_size   = (32, 16, 16)
 
 # LR & Scheduler
 config.base_lr       = 2e-3
@@ -70,34 +43,58 @@ config.total_steps   = 20*1000        # 전체 학습 스텝
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
 config.log_dir       = args.log_dir or config.log_dir
-config.n_classifiers = args.n_classifiers
+config.n_clips       = args.n_clips
 # -----------------------------
 
 # Loss
-config.losses = ['classifier']
-config.main_loss = 'classifier'
+config.losses = ['cosine', 'clip']
+config.main_loss = 'clip'
 
 os.makedirs(config.log_dir, exist_ok=True)
 
 # ===============================
 # Model (frozen)
 # ===============================
-from backbones.gmdit import GMDiT
-from utils.general_classifier import Classifier
+from backbones.sana import SANA
+from utils.open_clip import OpenCLIPEmbedder
 
-if config.backbone == 'GMDiT':
-    model = GMDiT(trainable=True)  # 내부 구현에 맞춰 유지
+CLIP_MODELS = [
+    ('ViT-H-14-378-quickgelu', 'dfn5b'),                                  # MSCOCO: 63.76% (Rank 1)
+    ('ViT-B-16-SigLIP-512', 'webli'),                                      # MSCOCO: 59.63% (Rank 9)
+    ('ViT-H-14-CLIPA-336', 'laion2b'),                                     # MSCOCO: 58.83% (Rank 15)
+    ('ViT-H-14-CLIPA', 'datacomp1b'),                                      # MSCOCO: 58.04% (Rank 21)
+    ('ViT-L-14-quickgelu', 'dfn2b'),                                       # MSCOCO: 57.08% (Rank 27)
+    ('ViT-L-14-CLIPA', 'datacomp1b'),                                      # MSCOCO: 56.04% (Rank 33)
+    ('ViT-L-14', 'laion2b_s32b_b82k'),                                     # MSCOCO: 54.93% (Rank 39)
+    ('convnext_base_w', 'laion_aesthetic_s13b_b82k'),                      # MSCOCO: 52.38% (Rank 45)
+    ('convnext_base_w_320', 'laion_aesthetic_s13b_b82k_augreg'),           # MSCOCO: 51.42% (Rank 51)
+    ('ViT-B-16-plus-240', 'laion400m_e32'),                                # MSCOCO: 49.79% (Rank 57)
+    ('ViT-B-32', 'laion2b_e16'),                                           # MSCOCO: 47.68% (Rank 64)
+    ('ViT-B-32-quickgelu', 'metaclip_fullcc'),                             # MSCOCO: 46.62% (Rank 70)
+    ('RN50x16', 'openai'),                                                 # MSCOCO: 45.38% (Rank 76)
+    ('ViT-B-32', 'laion400m_e32'),                                         # MSCOCO: 43.37% (Rank 82)
+    ('ViT-B-32-quickgelu', 'openai'),                                      # MSCOCO: 40.28% (Rank 88)
+    ('RN50-quickgelu', 'openai'),                                          # MSCOCO: 38.69% (Rank 94)
+    ('RN50-quickgelu', 'cc12m'),                                           # MSCOCO: 28.91% (Rank 100)
+    ('RN50-quickgelu', 'yfcc15m'),                                         # MSCOCO: 21.82% (Rank 106)
+    ('ViT-B-32', 'commonpool_m_basic_s128m_b4k'),                          # MSCOCO: 13.33% (Rank 112)
+    ('coca_ViT-B-32', 'mscoco_finetuned_laion2b_s13b_b90k'),               # MSCOCO: 0.60% (Rank 121)
+]
+
+if config.backbone == 'SANA':
+    model = SANA(trainable=True)  # 내부 구현에 맞춰 유지
     model.set_freeze()
 device = model.device
 print(model)
+if 'clip' in config.losses:
+    clips = []
+    for model_name, pretrained in CLIP_MODELS[:config.n_clips]:
+        clip = OpenCLIPEmbedder(
+                model_name=model_name,
+                pretrained=pretrained,
+            ).to(device)
+        clips.append(clip)
 
-if 'classifier' in config.losses:
-    arch, weights = CLASSIFIER_MODELS[config.n_classifiers]
-    classifier = Classifier(
-            arch=arch,
-            weights=weights,
-        ).to(device)
-    
 print('done')
 
 # ===============================
@@ -116,7 +113,7 @@ solver = GDual_Solver(
     transform=transform,
     param_extractor=extractor,
     skip_type="time_uniform_flow",
-    flow_shift=1.0,
+    flow_shift=3.0,
     pred_order=1,
     corr_order=2,
     order1_kappa=True,
@@ -124,7 +121,7 @@ solver = GDual_Solver(
     use_corrector=True,
     time_learning=True,
     train_mode=True,
-    checkpoint=False
+    checkpoint=True
 ).to(device)
 
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
@@ -163,51 +160,54 @@ def save_checkpoint(global_step, save_dir, solver, optimizer):
     return step_path
 
 
-def get_classifier_loss(raw_output, targets):
-    loss = classifier(raw_output, targets=targets)['loss']
-    return loss
+def get_clip_loss(raw_output, targets):
+    loss_list = []
+    for clip in clips:
+        loss = clip.get_clip_loss(raw_output, texts=targets)
+        loss_list.append(loss)
+    return torch.mean(torch.stack(loss_list))
 
 @torch.no_grad()
-def get_valid_loss(valid_noises, valid_conds, device, solver):
+def get_valid_loss(prompts, device, solver):
     solver.eval()
     losses = []
-    start = 0
-    while True:
-        if start >= len(valid_noises):
-            break
-        noises = valid_noises[start:min(start+config.batch_size, len(valid_noises))]
-        conds = valid_conds[start:min(start+config.batch_size, len(valid_noises))]
-        start += config.batch_size
+    for i, prompt in enumerate(prompts):
+        noises = torch.randn(1, *config.latent_size).to(device, non_blocking=True)
+        conds = [prompt]
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
-        with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+        with torch.no_grad(), torch.autocast(device_type='cuda', dtype=torch.bfloat16):
             latent_pred = solver.sample(noises, model_fn)['samples']
-            if 'classifier' in config.losses:
-                outputs = model.decode_vae(latent_pred, raw_output=True)
-                loss = get_classifier_loss(outputs['raw_output'], targets=conds)
+            if 'cosine' in config.losses:
+                sample_pred = model.decode_vae(latent_pred, raw_output=True)['raw_output']
+                loss = clips[0].get_cossim_loss(sample_pred, conds)
                 losses.append(loss.item())
 
     return np.mean(losses)
 
 
-def do_train_loop(device, writer, solver, optimizer, global_step):
+def do_train_loop(device, solver, optimizer, global_step):
     solver.train()
-    pbar = tqdm(range(1000))
+    if config.main_loss == 'clip':
+        data = np.load('prompts/mscoco2014_train.npz')['arr_0'].tolist()
+        prompts = [d[1] for d in data]
+        pbar = tqdm(range(1000))
     
     for _, batch in enumerate(pbar):
         if global_step >= config.total_steps:
             break
 
         optimizer.zero_grad(set_to_none=True)
-        if config.main_loss == 'classifier':
+        if config.main_loss == 'clip':
             noises = torch.randn(config.batch_size, *config.latent_size).to(device, non_blocking=True)
-            conds = torch.randint(0, 1000, size=(len(noises),)).to(device, non_blocking=True)
+            indexes = np.random.randint(0, len(prompts), size=(len(noises),))
+            conds = [prompts[index] for index in indexes]
         
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
             latent_pred = solver.sample(noises, model_fn)['samples']
-            if 'classifier' in config.main_loss:
-                outputs = model.decode_vae(latent_pred, raw_output=True)
-                loss = get_classifier_loss(outputs['raw_output'], targets=conds)
+            if 'clip' == config.main_loss:
+                sample_pred = model.decode_vae(latent_pred, raw_output=True)['raw_output']
+                loss = get_clip_loss(sample_pred, conds)
                 
         abort_if_bad("train", loss, global_step)  # ← 즉시 중단
         loss.backward()
@@ -224,32 +224,22 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
 # ===============================
 # Train
 # ===============================
-
-def set_seed(seed=42):
-    import random
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
 def main():
-    set_seed()
-
     writer = SummaryWriter(config.log_dir)
     print('tensorboard:', config.log_dir)
 
     global_step = 0
-    valid_noises = torch.randn(config.n_valid, *config.latent_size).to(device, non_blocking=True)
-    valid_conds = torch.randint(0, 1000, size=(len(valid_noises),)).to(device, non_blocking=True)
     while True:
-        loss = get_valid_loss(valid_noises, valid_conds, device, solver)
+        data = np.load('prompts/mscoco2014_valid.npz')['arr_0'].tolist()
+        prompts = [d[1] for d in data][:config.n_valid]
+        loss = get_valid_loss(prompts, device, solver)
         writer.add_scalar('valid_loss', loss, global_step)
         save_checkpoint(global_step, config.log_dir, solver, optimizer) 
 
         if global_step >= config.total_steps:
             break
         
-        global_step = do_train_loop(device, writer, solver, optimizer, global_step)
+        global_step = do_train_loop(device, solver, optimizer, global_step)
 
     print('E-N-D')
     
