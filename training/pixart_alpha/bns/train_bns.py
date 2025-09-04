@@ -107,7 +107,8 @@ if latest is not None:
         scheduler.load_state_dict(ckpt["scheduler_state_dict"])
     else:
         # 없으면 현재 스텝에 맞춰 1회 동기화 (CosineAnnealingLR은 step(epoch) 지원)
-        scheduler.step(resume_step - 1)
+        if resume_step > 0:
+            scheduler.step(resume_step - 1)
 
     # 로드 결과 출력 (학습률 확인용)
     lr_now = optimizer.param_groups[0]["lr"]
