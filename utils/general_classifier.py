@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision import models as tvm  # get_model
+from torchvision import models as tvm
+from torchvision.models._api import WeightsEnum
 
 class Classifier(nn.Module):
     """
@@ -27,42 +28,61 @@ class Classifier(nn.Module):
         self.clamp = clamp
         self.net_dtype = net_dtype
 
-        # Inception v3는 pretrained일 때 aux_logits=True를 요구함
+        # ---- helper: coerce string/DEFAULT to real Weights Enum so .meta works
+        weights = self._coerce_weights(arch, weights)
+
+        # Inception v3 needs aux_logits=True when using pretrained
         extra = dict(model_kwargs or {})
         if arch == "inception_v3" and weights is not None:
             extra.setdefault("aux_logits", True)
 
-        # 모델 생성 (헤드 교체 없음)
-        m = tvm.get_model(arch, weights=weights, **extra)
-        self.m = m.to(dtype=net_dtype)
-
-        # 항상 eval + 파라미터 동결
+        # Build model
+        m = tvm.get_model(arch, weights=weights, **extra).to(dtype=net_dtype)
+        self.m = m
         self._lock_eval_and_freeze()
 
-        # mean/std 및 타깃 크기 설정 (weights가 Enum이면 meta 사용, 아니면 기본값)
-        if hasattr(weights, "meta"):
-            meta = weights.meta
-            mean = meta.get("mean", (0.485, 0.456, 0.406))
-            std  = meta.get("std",  (0.229, 0.224, 0.225))
-            if image_size == "auto":
-                _, H, W = meta.get("input_size", (3, 224, 224))
-            elif isinstance(image_size, int):
-                H = W = image_size
+        # Resolve mean/std from weights.meta if available
+        meta = getattr(weights, "meta", {}) if weights is not None else {}
+        mean = meta.get("mean", (0.485, 0.456, 0.406))
+        std  = meta.get("std",  (0.229, 0.224, 0.225))
+
+        # Resolve target size
+        if image_size == "auto":
+            if hasattr(m, "image_size") and m.image_size is not None:
+                H = W = int(m.image_size)            # e.g., vit_h_14 SWAG -> 518
             else:
-                H, W = image_size
+                _, H, W = meta.get("input_size", (3, 299 if arch == "inception_v3" else 224, 299 if arch == "inception_v3" else 224))
+        elif isinstance(image_size, int):
+            H = W = image_size
         else:
-            mean = (0.485, 0.456, 0.406)
-            std  = (0.229, 0.224, 0.225)
-            if image_size == "auto":
-                H = W = 299 if arch == "inception_v3" else 224
-            elif isinstance(image_size, int):
-                H = W = image_size
-            else:
-                H, W = image_size
+            H, W = image_size
 
         self.register_buffer("mean", torch.tensor(mean).view(1, 3, 1, 1))
         self.register_buffer("std",  torch.tensor(std ).view(1, 3, 1, 1))
         self.target_hw = (int(H), int(W))
+
+    # --- helper ---
+    @staticmethod
+    def _coerce_weights(arch: str, weights):
+        """
+        Accepts Enum/String/None:
+        - "DEFAULT" -> weights enum DEFAULT
+        - "IMAGENET1K_SWAG_E2E_V1" (etc.) -> corresponding enum
+        - Enum/None -> returned as-is
+        """
+        if isinstance(weights, WeightsEnum) or weights is None:
+            return weights
+        if isinstance(weights, str):
+            try:
+                enum_cls = tvm.get_model_weights(arch)
+                if weights.upper() == "DEFAULT":
+                    return enum_cls.DEFAULT
+                # attribute name must match exactly
+                if hasattr(enum_cls, weights):
+                    return getattr(enum_cls, weights)
+            except Exception:
+                pass
+        return weights
 
     def _lock_eval_and_freeze(self):
         super().train(False)
