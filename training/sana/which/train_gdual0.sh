@@ -3,12 +3,12 @@ set -euo pipefail
 export DPM_TQDM=${DPM_TQDM:-False}
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 
-STEPS=(3 4 5 6)
-N_CLIPS=(1 3 5 7 9)
+STEPS=(3 4)
+N_CLIPS=(0 1 2 3 4 5 6 7 9 10 11 12 13 14 15 16 17 18 19)
 
-for n in "${N_CLIPS[@]}"; do  
-  for s in "${STEPS[@]}"; do
-    LOG="logs/sana/multi/s${s}_n${n}"
+for s in "${STEPS[@]}"; do
+  for n in "${N_CLIPS[@]}"; do
+    LOG="logs/sana/which/s${s}_n${n}"
 
     # 이미 로그 디렉토리가 있으면 스킵
     if [[ -d "$LOG" ]]; then
@@ -19,7 +19,7 @@ for n in "${N_CLIPS[@]}"; do
     echo ">>> n_steps=${s}, n_clips=${n} -> ${LOG}"
     mkdir -p "$LOG"
 
-    python -m training.sana.multi.train_gdual \
+    python -m training.sana.which.train_gdual \
       --n_steps "$s" \
       --n_clips "$n" \
       --log_dir "$LOG"

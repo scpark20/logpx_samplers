@@ -86,15 +86,14 @@ if config.backbone == 'SANA':
     model.set_freeze()
 device = model.device
 print(model)
-if 'clip' in config.losses:
-    clips = []
-    for model_name, pretrained in CLIP_MODELS[:config.n_clips]:
-        clip = OpenCLIPEmbedder(
-                model_name=model_name,
-                pretrained=pretrained,
-            ).to(device)
-        clips.append(clip)
 
+if 'clip' in config.losses:
+    model_name, pretrained = CLIP_MODELS[config.n_clips]
+    clip = OpenCLIPEmbedder(
+            model_name=model_name,
+            pretrained=pretrained,
+        ).to(device)
+    
 print('done')
 
 # ===============================
@@ -161,11 +160,8 @@ def save_checkpoint(global_step, save_dir, solver, optimizer):
 
 
 def get_clip_loss(raw_output, targets):
-    loss_list = []
-    for clip in clips:
-        loss = clip.get_clip_loss(raw_output, texts=targets)
-        loss_list.append(loss)
-    return torch.mean(torch.stack(loss_list))
+    loss = clip.get_clip_loss(raw_output, texts=targets)
+    return loss
 
 @torch.no_grad()
 def get_valid_loss(prompts, device, solver):
@@ -179,7 +175,7 @@ def get_valid_loss(prompts, device, solver):
             latent_pred = solver.sample(noises, model_fn)['samples']
             if 'cosine' in config.losses:
                 sample_pred = model.decode_vae(latent_pred, raw_output=True)['raw_output']
-                loss = clips[0].get_cossim_loss(sample_pred, conds)
+                loss = clip.get_cossim_loss(sample_pred, conds)
                 losses.append(loss.item())
 
     return np.mean(losses)
@@ -224,7 +220,17 @@ def do_train_loop(device, solver, optimizer, global_step):
 # ===============================
 # Train
 # ===============================
+
+def set_seed(seed=42):
+    import random
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
 def main():
+    set_seed()
+    
     writer = SummaryWriter(config.log_dir)
     print('tensorboard:', config.log_dir)
 
