@@ -26,10 +26,23 @@ scp -P 22223 scpark@220.117.157.23:/dataset/sana/*.zip /dataset/sana
 scp -P 22223 scpark@220.117.157.23:/dataset/sana/train4.5_1k_traj.zip /dataset/sana
 scp -P 22223 scpark@220.117.157.23:/dataset/sana/valid4.5_100.zip /dataset/sana
 
+
+# PixArt_Alpha3.5
+mkdir -p /dataset/pixart_alpha3.5
+scp -P 22223 scpark@220.117.157.23:/dataset/pixart_alpha3.5/*.zip /dataset/pixart_alpha3.5/
+scp -P 22223 scpark@220.117.157.23:/dataset/pixart_alpha3.5/train3.5_1k_traj.zip /dataset/pixart_alpha3.5/
+
 # GMDiT
 git submodule update --init --recursive
+pip install -r requirements_gmdit.txt
+
+mkdir -p /dataset/gmdit
+scp -P 22223 scpark@220.117.157.23:/dataset/gmdit/*.zip /dataset/gmdit/
+
 pip install -U openmim
 mim install mmcv
+mmcv==1.6.1
+mmgen==0.7.2
 
 2. 압축풀기
 cd /dataset/sana
@@ -48,14 +61,9 @@ zip -r 0817.zip logs
 
 5. logs 보내기
 scp -r -P 22223 logs scpark@220.117.157.23:/data/scpark/
-scp -P 22223 0826.zip scpark@220.117.157.23:/data/scpark/logs
-scp -P 22223 0823-2.zip scpark@220.117.157.23:/data/scpark/logs
-scp -P 22223 0823-1.zip scpark@220.117.157.23:/data/scpark/logs
-scp -P 22223 0818.zip scpark@220.117.157.23:/data/scpark/logs
-scp -r -P 22223 *.zip scpark@220.117.157.23:/data/scpark/logs/sana/
-scp -r -P 22223 ./'0818-19:SANA,CLIP' scpark@220.117.157.23:/data/scpark/logs/sana
-scp -r -P 22223 ./'0820-13:SANA,CLIP,6steps,p1c1' scpark@220.117.157.23:/data/scpark/logs/sana
-scp -r -P 22223 ./sana scpark@220.117.157.23:/data/scpark/logs
+scp -r -P 22223 bns scpark@220.117.157.23:/data/scpark/logs/pixart_alpha/
+scp -r -P 22223 ds scpark@220.117.157.23:/data/scpark/logs/gmdit/
+scp -r -P 22223 mse scpark@220.117.157.23:/data/scpark/logs/gmdit/
 
 5.5 logs 받기
 scp -P 22223 scpark@220.117.157.23:/data/scpark/logs_0828.zip .
@@ -66,14 +74,26 @@ scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/ablations/multi .
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/ablations/multi3 logs/ablations/
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/ablations .
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/dit/bns .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/gmdit/multi .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/gmdit/bns .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/gmdit/mse .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/pixart_alpha.zip .
+
+SANA
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/sana/bns .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/sana/ds .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/sana/multi .
 
 6. dataset 보내기
+scp -P 22223 *.zip scpark@220.117.157.23:/dataset/gmdit/
+scp -P 22223 *.zip scpark@220.117.157.23:/dataset/pixart_alpha3.5/
 scp -P 22223 *.zip scpark@220.117.157.23:/dataset/dit
 scp -P 22223 1.6B_1024px_valid4.5.zip scpark@220.117.157.23:/dataset/sana
 scp -P 22223 sana_valid4.5.zip scpark@220.117.157.23:/dataset
 scp -P 22223 valid4.5.zip scpark@220.117.157.23:/dataset/sana
 scp -P 22223 /dataset/sana/*.zip scpark@220.117.157.23:/dataset/sana/
 scp -P 22223 /dataset/sana/train4.5_1k.zip scpark@220.117.157.23:/dataset/sana/
+scp -P 22223 train3.5_1k_traj.zip scpark@220.117.157.23:/dataset/pixart_alpha3.5/
 
 7. stats 받기
 scp -P 22223 scpark@220.117.157.23:/dataset/dit/stats.pt /dataset/dit/

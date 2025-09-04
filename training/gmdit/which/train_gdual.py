@@ -18,27 +18,28 @@ GMFLOW = os.path.join("submodules", "GMFlow")
 sys.path.insert(0, GMFLOW)
 
 CLASSIFIER_MODELS = [
-  ("vit_h_14",          "ViT_H_14_Weights.IMAGENET1K_SWAG_E2E_V1"),  # Rank: 1,   Acc@5: 98.694
-  ("regnet_y_128gf",    "RegNet_Y_128GF_Weights.IMAGENET1K_SWAG_LINEAR_V1"),  # Rank: 6,   Acc@5: 97.844
-  ("regnet_y_16gf",     "RegNet_Y_16GF_Weights.IMAGENET1K_SWAG_LINEAR_V1"),   # Rank: 12,  Acc@5: 97.244
-  ("convnext_base",     "ConvNeXt_Base_Weights.IMAGENET1K_V1"),               # Rank: 18,  Acc@5: 96.870
-  ("efficientnet_b5",   "EfficientNet_B5_Weights.IMAGENET1K_V1"),             # Rank: 24,  Acc@5: 96.628
-  ("regnet_y_16gf",     "RegNet_Y_16GF_Weights.IMAGENET1K_V2"),               # Rank: 30,  Acc@5: 96.328
-  ("swin_v2_t",         "Swin_V2_T_Weights.IMAGENET1K_V1"),                   # Rank: 36,  Acc@5: 96.132
-  ("swin_t",            "Swin_T_Weights.IMAGENET1K_V1"),                      # Rank: 42,  Acc@5: 95.776
-  ("regnet_y_32gf",     "RegNet_Y_32GF_Weights.IMAGENET1K_V1"),               # Rank: 48,  Acc@5: 95.340
-  ("regnet_y_8gf",      "RegNet_Y_8GF_Weights.IMAGENET1K_V1"),                # Rank: 54,  Acc@5: 95.048
-  ("regnet_y_3_2gf",    "RegNet_Y_3_2GF_Weights.IMAGENET1K_V1"),              # Rank: 60,  Acc@5: 94.576
-  ("resnet152",         "ResNet152_Weights.IMAGENET1K_V1"),                   # Rank: 66,  Acc@5: 94.046
-  ("resnet101",         "ResNet101_Weights.IMAGENET1K_V1"),                   # Rank: 72,  Acc@5: 93.546
-  ("regnet_y_800mf",    "RegNet_Y_800MF_Weights.IMAGENET1K_V1"),              # Rank: 78,  Acc@5: 93.136
-  ("mobilenet_v3_large","MobileNet_V3_Large_Weights.IMAGENET1K_V2"),          # Rank: 84,  Acc@5: 92.566
-  ("regnet_y_400mf",    "RegNet_Y_400MF_Weights.IMAGENET1K_V1"),              # Rank: 90,  Acc@5: 91.716
-  ("regnet_x_400mf",    "RegNet_X_400MF_Weights.IMAGENET1K_V1"),              # Rank: 96,  Acc@5: 90.950
-  ("mobilenet_v2",      "MobileNet_V2_Weights.IMAGENET1K_V1"),                # Rank: 102, Acc@5: 90.286
-  ("shufflenet_v2_x1_0","ShuffleNet_V2_X1_0_Weights.IMAGENET1K_V1"),          # Rank: 108, Acc@5: 88.316
-  ("alexnet",           "AlexNet_Weights.IMAGENET1K_V1"),                     # Rank: 114, Acc@5: 79.066
+  ("vit_h_14",          "ViT_H_14_Weights.IMAGENET1K_SWAG_E2E_V1"),   # Rank: 1,   Acc@5: 98.694, GFLOPS: 1016.72
+  ("regnet_y_128gf",    "RegNet_Y_128GF_Weights.IMAGENET1K_SWAG_LINEAR_V1"),  # Rank: 6,   Acc@5: 97.844, GFLOPS: 127.52
+  ("regnet_y_16gf",     "RegNet_Y_16GF_Weights.IMAGENET1K_SWAG_LINEAR_V1"),   # Rank: 12,  Acc@5: 97.244, GFLOPS: 15.91
+  ("convnext_base",     "ConvNeXt_Base_Weights.IMAGENET1K_V1"),                # Rank: 18,  Acc@5: 96.870, GFLOPS: 15.36
+  ("efficientnet_b5",   "EfficientNet_B5_Weights.IMAGENET1K_V1"),              # Rank: 24,  Acc@5: 96.628, GFLOPS: 10.27
+  ("regnet_y_16gf",     "RegNet_Y_16GF_Weights.IMAGENET1K_V2"),                # Rank: 30,  Acc@5: 96.328, GFLOPS: 15.91
+  ("swin_v2_t",         "Swin_V2_T_Weights.IMAGENET1K_V1"),                    # Rank: 36,  Acc@5: 96.132, GFLOPS: 5.94
+  ("swin_t",            "Swin_T_Weights.IMAGENET1K_V1"),                       # Rank: 42,  Acc@5: 95.776, GFLOPS: 4.49
+  ("regnet_y_32gf",     "RegNet_Y_32GF_Weights.IMAGENET1K_V1"),                # Rank: 48,  Acc@5: 95.340, GFLOPS: 32.28
+  ("regnet_y_8gf",      "RegNet_Y_8GF_Weights.IMAGENET1K_V1"),                 # Rank: 54,  Acc@5: 95.048, GFLOPS: 8.47
+  ("regnet_y_3_2gf",    "RegNet_Y_3_2GF_Weights.IMAGENET1K_V1"),               # Rank: 60,  Acc@5: 94.576, GFLOPS: 3.18
+  ("resnet152",         "ResNet152_Weights.IMAGENET1K_V1"),                    # Rank: 66,  Acc@5: 94.046, GFLOPS: 11.51
+  ("resnet101",         "ResNet101_Weights.IMAGENET1K_V1"),                    # Rank: 72,  Acc@5: 93.546, GFLOPS: 7.8
+  ("regnet_y_800mf",    "RegNet_Y_800MF_Weights.IMAGENET1K_V1"),               # Rank: 78,  Acc@5: 93.136, GFLOPS: 0.83
+  ("mobilenet_v3_large","MobileNet_V3_Large_Weights.IMAGENET1K_V2"),           # Rank: 84,  Acc@5: 92.566, GFLOPS: 0.22
+  ("regnet_y_400mf",    "RegNet_Y_400MF_Weights.IMAGENET1K_V1"),               # Rank: 90,  Acc@5: 91.716, GFLOPS: 0.40
+  ("regnet_x_400mf",    "RegNet_X_400MF_Weights.IMAGENET1K_V1"),               # Rank: 96,  Acc@5: 90.950, GFLOPS: 0.41
+  ("mobilenet_v2",      "MobileNet_V2_Weights.IMAGENET1K_V1"),                 # Rank: 102, Acc@5: 90.286, GFLOPS: 0.30
+  ("shufflenet_v2_x1_0","ShuffleNet_V2_X1_0_Weights.IMAGENET1K_V1"),           # Rank: 108, Acc@5: 88.316, GFLOPS: 0.14
+  ("alexnet",           "AlexNet_Weights.IMAGENET1K_V1"),                      # Rank: 114, Acc@5: 79.066, GFLOPS: 0.71
 ]
+
 
 # ===============================
 # CLI: 요청대로 세 가지만 제어

@@ -34,6 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--batch_size',      type=int,   default=5)
     parser.add_argument('--output_noise',    action='store_true',  default=False)
     parser.add_argument('--output_traj',     action='store_true',  default=False)
+    parser.add_argument('--output_preds',     action='store_true',  default=False)
     parser.add_argument('--output_inception',       action='store_true',  default=False)
     parser.add_argument('--output_clean_inception', action='store_true',  default=False)
     parser.add_argument('--output_tf_inception',    action='store_true', default=False)
@@ -289,7 +290,7 @@ def main():
                 state_dict = torch.load(best_pt, map_location='cpu', weights_only=False)['solver_state_dict']
                 solver.load_state_dict(state_dict, strict=False)
 
-            outputs = solver.sample(noises, model_fn, output_traj=config.output_traj)
+            outputs = solver.sample(noises, model_fn, output_traj=config.output_traj, output_preds=config.output_preds)
 
             # ---- 디코딩 필요 여부 (PNG/특징 추출 모두 포함) ----
             needs_decode = (
@@ -319,9 +320,14 @@ def main():
                 noises = noises.detach().cpu()
 
             # 안전 초기화 (solver가 trajs 키를 안 줄 수도 있음)
-            trajs = timesteps = alphas = sigmas = None
+            preds = trajs = timesteps = alphas = sigmas = None
             if config.output_traj and ('trajs' in outputs):
                 trajs = outputs['trajs'].detach().cpu()
+                timesteps = outputs['timesteps'].detach().cpu()
+                alphas = outputs['alphas'].detach().cpu()
+                sigmas = outputs['sigmas'].detach().cpu()
+            if config.output_preds and ('preds' in outputs):
+                preds = outputs['preds'].detach().cpu()
                 timesteps = outputs['timesteps'].detach().cpu()
                 alphas = outputs['alphas'].detach().cpu()
                 sigmas = outputs['sigmas'].detach().cpu()
@@ -352,6 +358,11 @@ def main():
                     output['noise'] = compact(noises[j])
                 if (config.output_traj and (trajs is not None)):
                     output['traj'] = compact(trajs[j])
+                    output['timesteps'] = compact(timesteps)
+                    output['alphas'] = compact(alphas)
+                    output['sigmas'] = compact(sigmas)
+                if (config.output_preds and (preds is not None)):
+                    output['preds'] = compact(preds[j])
                     output['timesteps'] = compact(timesteps)
                     output['alphas'] = compact(alphas)
                     output['sigmas'] = compact(sigmas)

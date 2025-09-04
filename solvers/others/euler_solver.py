@@ -18,7 +18,7 @@ class Euler_Solver(Solver):
         self.skip_type = skip_type
         self.flow_shift = flow_shift
         
-    def sample(self, x, model_fn, output_traj=False, **kwargs):
+    def sample(self, x, model_fn, output_traj=False, output_preds=False, **kwargs):
         self.set_model_fn(model_fn)
         
         t_0 = 1.0 / self.noise_schedule.total_N
@@ -26,6 +26,7 @@ class Euler_Solver(Solver):
         device = x.device
         
         trajs = []    
+        preds = []
         with torch.no_grad():
             timesteps = self.get_time_steps(skip_type=self.skip_type, t_T=t_T, t_0=t_0, N=self.steps, device=device, shift=self.flow_shift)
             lambdas = torch.tensor([self.noise_schedule.marginal_lambda(t) for t in timesteps], device=device)
@@ -35,10 +36,18 @@ class Euler_Solver(Solver):
             x_t = x
             if output_traj:
                 trajs.append(x_t.detach().cpu())
-
+            
             for i in range(0, self.steps):
                 h = lambdas[i+1] - lambdas[i]
                 model_t = self.model_fn(x_t, timesteps[i])
+                if output_preds:
+                    if self.algorithm_type == 'dual_prediction':
+                        # (B, 2, C, H, W)
+                        pred = torch.stack([model_t[0], model_t[1]], dim=1)
+                        preds.append(pred)
+                    else: 
+                        preds.append(model_t)
+
                 if self.algorithm_type == 'vector_prediction':
                     sample_coeff = 1
                     model_coeff = (timesteps[i+1] - timesteps[i])
@@ -65,6 +74,9 @@ class Euler_Solver(Solver):
         outputs = {'samples': x_t}
         if output_traj:            
             outputs['trajs'] = torch.stack(trajs, dim=1)
+        if output_preds:
+            outputs['preds'] = torch.stack(preds, dim=1)
+        if output_traj or output_preds:
             outputs['timesteps'] = timesteps.detach().cpu()
             outputs['alphas'] = signal_rates.detach().cpu()
             outputs['sigmas'] = noise_rates.detach().cpu()
