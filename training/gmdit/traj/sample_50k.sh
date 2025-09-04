@@ -9,7 +9,7 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=random
+TAG=mse
 MODEL=GMDiT
 DATA=ImageNet
 BATCH_SIZE=10          # GPU당 배치
@@ -21,9 +21,8 @@ N_SAMPLES=50000
 SEED_OFFSET=0
 
 SOLVERS=("Dual-Solver")
-NFES=(9)
+NFES=(9 7)
 CFGS=(1.4)
-N_CLASSIFIERS=1
 
 # 사용 GPU 개수 -> nproc
 IFS=',' read -ra _GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
@@ -34,8 +33,8 @@ BASE_OUT="samplings"   # SAVE_ROOT의 베이스
 for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do
     for cfg in "${CFGS[@]}"; do
-      SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}/${N_CLASSIFIERS}"
-      PT_DIR="logs/gmdit/random/s${nfe}_n${N_CLASSIFIERS}"
+      SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}/"
+      PT_DIR="logs/gmdit/mse/s${nfe}"
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
