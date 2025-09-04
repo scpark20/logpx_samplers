@@ -97,7 +97,7 @@ resume_step = 0
 latest = get_latest_pt(config.log_dir)
 if latest is not None:
     print(f"[RESUME] loading: {latest}")
-    ckpt = torch.load(latest, map_location='cpu', weight_only=False)  # state dict은 장치 무관하게 로드 후 사용
+    ckpt = torch.load(latest, map_location='cpu', weights_only=False)  # state dict은 장치 무관하게 로드 후 사용
     solver.load_state_dict(ckpt["solver_state_dict"])
     optimizer.load_state_dict(ckpt["optim_state_dict"])
     resume_step = int(ckpt.get("global_step", 0))
