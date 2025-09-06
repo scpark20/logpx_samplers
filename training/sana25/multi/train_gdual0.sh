@@ -8,7 +8,7 @@ N_CLIPS=(1)
 
 for n in "${N_CLIPS[@]}"; do  
   for s in "${STEPS[@]}"; do
-    LOG="logs/sana2.5/multi/s${s}_n${n}"
+    LOG="logs/sana25/multi/s${s}_n${n}"
 
     # 이미 로그 디렉토리가 있으면 스킵
     if [[ -d "$LOG" ]]; then
@@ -19,7 +19,7 @@ for n in "${N_CLIPS[@]}"; do
     echo ">>> n_steps=${s}, n_clips=${n} -> ${LOG}"
     mkdir -p "$LOG"
 
-    python -m training.sana2.5.multi.train_gdual \
+    python -m training.sana25.multi.train_gdual \
       --n_steps "$s" \
       --n_clips "$n" \
       --log_dir "$LOG"

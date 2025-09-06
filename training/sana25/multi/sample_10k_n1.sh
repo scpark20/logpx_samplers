@@ -35,7 +35,7 @@ for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do
     for cfg in "${CFGS[@]}"; do
       SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}"
-      PT_DIR="logs/sana2.5/multi/s${nfe}_n${N_CLIPS}"
+      PT_DIR="logs/sana25/multi/s${nfe}_n${N_CLIPS}"
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
