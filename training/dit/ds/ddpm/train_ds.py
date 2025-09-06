@@ -69,14 +69,14 @@ print('done')
 # ===============================
 # Solver / Optimizer / Scheduler
 # ===============================
-from solvers.competing.ds.ds_solver_ddpm import DS_Solver
+from solvers.competing.ds.ds_solver_diffusion import DS_Solver
 
 noise_schedule = model.get_noise_schedule()
 solver = DS_Solver(noise_schedule,
         config.n_steps,
         skip_type='time_uniform',
         flow_shift=1.0,
-        algorithm_type='dual_prediction',
+        algorithm_type='data_prediction',
         checkpoint=True).to(device)
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
 

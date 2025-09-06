@@ -4,7 +4,7 @@ export DPM_TQDM=${DPM_TQDM:-False}
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 
 STEPS=(9 3)
-N_CLASSIFIERS=(1 3 5 9)
+N_CLASSIFIERS=(1 3 5 7 9)
 
 for n in "${N_CLASSIFIERS[@]}"; do
   for s in "${STEPS[@]}"; do
@@ -21,6 +21,7 @@ for n in "${N_CLASSIFIERS[@]}"; do
 
     python -m training.gmdit.multi.train_gdual \
       --n_steps "$s" \
+      --n_classifiers "$n" \
       --log_dir "$LOG"
   done
 done

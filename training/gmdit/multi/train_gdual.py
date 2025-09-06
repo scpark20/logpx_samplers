@@ -117,7 +117,7 @@ solver = GDual_Solver(
     use_corrector=True,
     time_learning=True,
     train_mode=True,
-    checkpoint=True
+    checkpoint=False
 ).to(device)
 
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
@@ -220,7 +220,17 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
 # ===============================
 # Train
 # ===============================
+
+def set_seed(seed=42):
+    import random
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
 def main():
+    set_seed()
+
     writer = SummaryWriter(config.log_dir)
     print('tensorboard:', config.log_dir)
 
