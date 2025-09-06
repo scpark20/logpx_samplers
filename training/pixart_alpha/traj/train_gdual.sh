@@ -3,7 +3,7 @@ set -euo pipefail
 export DPM_TQDM=${DPM_TQDM:-False}
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 
-STEPS=(6 5 4 3)
+STEPS=(3 4 5 6)
 
 for s in "${STEPS[@]}"; do
   LOG="logs/pixart_alpha/traj/s${s}"
