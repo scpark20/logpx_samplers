@@ -8,8 +8,6 @@ git checkout scpark
 pip install -r requirements.txt
 pip install git+https://github.com/openai/CLIP.git
 
-#PREFER_SYSTEM_CUDNN=1 ./sh/install_tf_match_cudnn.sh
-
 1. 데이터셋 받기
 mkdir /dataset
 scp -P 22223 scpark@220.117.157.23:/dataset/*.zip /dataset
@@ -64,6 +62,7 @@ scp -r -P 22223 logs scpark@220.117.157.23:/data/scpark/
 scp -r -P 22223 bns scpark@220.117.157.23:/data/scpark/logs/pixart_alpha/
 scp -r -P 22223 ds scpark@220.117.157.23:/data/scpark/logs/gmdit/
 scp -r -P 22223 mse scpark@220.117.157.23:/data/scpark/logs/gmdit/
+scp -r -P 22223 sana25 scpark@220.117.157.23:/data/scpark/logs/
 
 5.5 logs 받기
 scp -P 22223 scpark@220.117.157.23:/data/scpark/logs_0828.zip .
@@ -78,6 +77,8 @@ scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/gmdit/multi .
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/gmdit/bns .
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/gmdit/mse .
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/pixart_alpha.zip .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/sana/traj .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/gmdit/which .
 
 SANA
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/sana/bns .
