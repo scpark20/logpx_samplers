@@ -143,7 +143,7 @@ def get_solver(config: EasyDict):
         from solvers.competing.ds.ds_solver import DS_Solver
         return DS_Solver
     if config.solver == 'DS-Solver_DDPM':
-        from solvers.competing.ds.ds_solver_ddpm import DS_Solver
+        from solvers.competing.ds.ds_solver_diffusion import DS_Solver
         return DS_Solver
     if config.solver == 'DS-Solver_Flow':
         from solvers.competing.ds.ds_solver_flow import DS_Solver
