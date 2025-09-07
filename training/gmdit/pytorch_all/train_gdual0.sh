@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export DPM_TQDM=${DPM_TQDM:-False}
+export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+
+STEPS=(3 5)
+# 0~114 전부
+N_CLASSIFIERS=($(seq 0 114))
+
+for s in "${STEPS[@]}"; do  
+  for n in "${N_CLASSIFIERS[@]}"; do
+    LOG="logs/gmdit/pytorch_all/s${s}_n${n}"
+
+    if [[ -d "$LOG" ]]; then
+      echo ">>> exists: $LOG — skipping"
+      continue
+    fi
+
+    echo ">>> n_steps=${s}, n_classifiers=${n} -> ${LOG}"
+    mkdir -p "$LOG"
+
+    python -m training.gmdit.pytorch_all.train_gdual \
+      --n_steps "$s" \
+      --n_classifiers "$n" \
+      --log_dir "$LOG"
+  done
+done

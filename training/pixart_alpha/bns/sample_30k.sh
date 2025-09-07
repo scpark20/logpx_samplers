@@ -2,7 +2,7 @@
 set -e
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=1
 
 # 🔇 torchrun OMP 배너 억제(사전에 지정)
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
@@ -11,17 +11,17 @@ export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
 TAG=bns
 MODEL=PixArt-Alpha
-DATA=MSCOCO2014_valid
-BATCH_SIZE=10          # GPU당 배치
+DATA=MSCOCO2014_valid_30k
+BATCH_SIZE=5          # GPU당 배치
 ALGO=dual_prediction
 SKIP=time_uniform
 ORDER=2
-N_SAMPLES=10000
+N_SAMPLES=30000
 SEED_OFFSET=0
 
-SOLVERS=("BNS-Solver")
+SOLVERS=("BNS-Solver_Sep")
 NFES=(3 4 5 6)
-CFGS=(4.5)
+CFGS=(3.5)
 
 # 사용 GPU 개수 -> nproc
 IFS=',' read -ra _GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"

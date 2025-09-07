@@ -9,7 +9,7 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=which
+TAG=pytorch_all
 MODEL=GMDiT
 DATA=ImageNet
 BATCH_SIZE=10          # GPU당 배치
@@ -17,13 +17,13 @@ ALGO=dual_prediction
 SKIP=time_uniform_flow
 FLOW_SHIFT=1.0
 ORDER=2
-N_SAMPLES=10000
+N_SAMPLES=50000
 SEED_OFFSET=0
 
 SOLVERS=("Dual-Solver")
 NFES=(3)
 CFGS=(1.4)
-N_CLASSIFIERS=(13)
+N_CLASSIFIERS=(0 1 2 3 4 5 6 7 8 9)
 
 # 사용 GPU 개수 -> nproc
 IFS=',' read -ra _GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
@@ -36,7 +36,7 @@ for solver in "${SOLVERS[@]}"; do
     for cfg in "${CFGS[@]}"; do
       for n in "${N_CLASSIFIERS[@]}"; do
         SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}/${TAG}_${n}"
-        PT_DIR="logs/gmdit/which/s${nfe}_n${n}"
+        PT_DIR="logs/gmdit/pytorch_all/s${nfe}_n${n}"
         echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg} | N_CLASSIFIER=${n}"
         CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
         DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
