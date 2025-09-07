@@ -4,7 +4,7 @@ export DPM_TQDM=${DPM_TQDM:-False}
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 
 STEPS=(3)
-N_CLASSIFIERS=(8 14 15 16 17 18 19)
+N_CLASSIFIERS=(8 15 16 17 18 19)
 
 for s in "${STEPS[@]}"; do  
   for n in "${N_CLASSIFIERS[@]}"; do
