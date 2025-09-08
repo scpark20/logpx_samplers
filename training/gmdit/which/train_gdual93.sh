@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export DPM_TQDM=${DPM_TQDM:-False}
-export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-3}
 
 STEPS=(9)
-N_CLASSIFIERS=(19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0)
+N_CLASSIFIERS=(3 7 11 15 19)
 
 for s in "${STEPS[@]}"; do  
   for n in "${N_CLASSIFIERS[@]}"; do
