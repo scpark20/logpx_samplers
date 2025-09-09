@@ -9,19 +9,19 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=ds
+TAG=traj
 MODEL=PixArt-Alpha
-DATA=MSCOCO2014_valid
-BATCH_SIZE=10          # GPU당 배치
+DATA=MSCOCO2014_valid_30k
+BATCH_SIZE=5          # GPU당 배치
 ALGO=data_prediction
 SKIP=time_uniform
 ORDER=2
-N_SAMPLES=10000
+N_SAMPLES=30000
 SEED_OFFSET=0
 
-SOLVERS=("DS-Solver_DDPM")
+SOLVERS=("Dual-Solver")
 NFES=(3 4 5 6)
-CFGS=(4.5)
+CFGS=(3.5)
 
 # 사용 GPU 개수 -> nproc
 IFS=',' read -ra _GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
@@ -33,7 +33,7 @@ for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do
     for cfg in "${CFGS[@]}"; do
       SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}"
-      PT_DIR="logs/pixart_alpha/ds/s${nfe}"
+      PT_DIR="logs/pixart_alpha/traj/s${nfe}"
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
