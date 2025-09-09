@@ -10,11 +10,11 @@ for s in "${STEPS[@]}"; do
   for n in "${N_CLIPS[@]}"; do
     LOG="logs/sana/which/s${s}_n${n}"
 
-    # 이미 로그 디렉토리가 있으면 스킵
-    if [[ -d "$LOG" ]]; then
-      echo ">>> exists: $LOG — skipping"
-      continue
-    fi
+    # # 이미 로그 디렉토리가 있으면 스킵
+    # if [[ -d "$LOG" ]]; then
+    #   echo ">>> exists: $LOG — skipping"
+    #   continue
+    # fi
 
     echo ">>> n_steps=${s}, n_clips=${n} -> ${LOG}"
     mkdir -p "$LOG"
