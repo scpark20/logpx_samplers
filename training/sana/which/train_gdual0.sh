@@ -4,7 +4,7 @@ export DPM_TQDM=${DPM_TQDM:-False}
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 
 STEPS=(6 3)
-N_CLIPS=(0 2 4 6 8 10 12 14 16 18)
+N_CLIPS=(0 4 8 12 16)
 
 for s in "${STEPS[@]}"; do
   for n in "${N_CLIPS[@]}"; do
