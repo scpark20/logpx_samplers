@@ -31,6 +31,11 @@ scp -P 22223 scpark@220.117.157.23:/dataset/pixart_alpha3.5/*.zip /dataset/pixar
 scp -P 22223 scpark@220.117.157.23:/dataset/pixart_alpha3.5/train3.5_1k_traj.zip /dataset/pixart_alpha3.5/
 
 # GMDiT
+git clone https://github.com/scpark20/logpx_samplers.git
+cd logpx_samplers
+git checkout scpark
+pip install -r requirements.txt
+pip install git+https://github.com/openai/CLIP.git
 git submodule update --init --recursive
 pip install -r requirements_gmdit.txt
 
@@ -63,6 +68,10 @@ scp -r -P 22223 bns scpark@220.117.157.23:/data/scpark/logs/pixart_alpha/
 scp -r -P 22223 ds scpark@220.117.157.23:/data/scpark/logs/gmdit/
 scp -r -P 22223 mse scpark@220.117.157.23:/data/scpark/logs/gmdit/
 scp -r -P 22223 sana25 scpark@220.117.157.23:/data/scpark/logs/
+scp -r -P 22223 s3_n8 scpark@220.117.157.23:/data/scpark/logs/gmdit/which/
+scp -r -P 22223 s9_n16 scpark@220.117.157.23:/data/scpark/logs/gmdit/which/
+scp -r -P 22223 which scpark@220.117.157.23:/data/scpark/logs/gmdit/
+scp -r -P 22223 which scpark@220.117.157.23:/data/scpark/logs/gmdit/
 
 5.5 logs 받기
 scp -P 22223 scpark@220.117.157.23:/data/scpark/logs_0828.zip .
@@ -79,6 +88,9 @@ scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/gmdit/mse .
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/pixart_alpha.zip .
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/sana/traj .
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/gmdit/which .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/pixart_alpha .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/gmdit/multi .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/sana25 .
 
 SANA
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/sana/bns .
