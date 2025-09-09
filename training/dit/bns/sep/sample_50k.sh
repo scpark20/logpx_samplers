@@ -2,7 +2,7 @@
 set -e
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0,1
 
 # 🔇 torchrun OMP 배너 억제(사전에 지정)
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
@@ -20,7 +20,7 @@ N_SAMPLES=50000
 SEED_OFFSET=0
 
 SOLVERS=("BNS-Solver_Sep")
-NFES=(3 4 5 6 7)
+NFES=(8 9)
 CFGS=(1.5)
 
 # 사용 GPU 개수 -> nproc
