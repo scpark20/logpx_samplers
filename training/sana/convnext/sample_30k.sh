@@ -9,7 +9,7 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=which
+TAG=convnext
 MODEL=SANA
 DATA=MSCOCO2014_valid_30k
 BATCH_SIZE=5          # GPU당 배치
@@ -23,8 +23,6 @@ SEED_OFFSET=0
 SOLVERS=("Dual-Solver")
 NFES=(6)
 CFGS=(4.5)
-#N_CLIPS=(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
-N_CLIPS=(16 17 18 19)
 
 # 사용 GPU 개수 -> nproc
 IFS=',' read -ra _GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
@@ -35,9 +33,8 @@ BASE_OUT="samplings"   # SAVE_ROOT의 베이스
 for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do
     for cfg in "${CFGS[@]}"; do
-     for n in "${N_CLIPS[@]}"; do 
-        SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}/${TAG}_${n}"
-        PT_DIR="logs/sana/which/s${nfe}_n${n}"
+        SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}/${TAG}"
+        PT_DIR="logs/sana/convnext/s${nfe}"
         echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
         CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
         DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
