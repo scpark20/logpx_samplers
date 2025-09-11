@@ -32,7 +32,7 @@ class Euler_Solver(Solver):
             lambdas = torch.tensor([self.noise_schedule.marginal_lambda(t) for t in timesteps], device=device)
             signal_rates = torch.tensor([self.noise_schedule.marginal_alpha(t) for t in timesteps], device=device)
             noise_rates = torch.tensor([self.noise_schedule.marginal_std(t) for t in timesteps], device=device)
-            
+
             x_t = x
             if output_traj:
                 trajs.append(x_t.detach().cpu())

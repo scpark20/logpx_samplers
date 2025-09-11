@@ -141,3 +141,39 @@ class Classifier(nn.Module):
             # 학습은 아니지만, 평가/지도 신호용 CE 계산은 제공
             out["loss"] = F.cross_entropy(logits.float(), targets.long())
         return out
+
+    def entropy(self, x: torch.Tensor):
+        # 전처리
+        p0 = next(self.m.parameters())
+        device = p0.device
+
+        x = self._normalize_input_range(x).to(device=device, dtype=torch.float32)
+        if x.shape[-2:] != self.target_hw:
+            x = F.interpolate(x, self.target_hw, mode="bilinear",
+                            align_corners=False, antialias=True)
+        x = (x - self.mean.to(device)) / self.std.to(device)
+        x = x.to(dtype=p0.dtype)
+
+        # 모델 추론
+        logits = self.m(x)
+        # InceptionOutputs 같은 namedtuple 처리
+        if not isinstance(logits, torch.Tensor):
+            if hasattr(logits, "logits"):
+                logits = logits.logits
+            else:
+                logits = logits[0]
+
+        # 안정적 엔트로피 계산 (float32로)
+        logits_f32 = logits.float()
+        logp = F.log_softmax(logits_f32, dim=1)
+        probs = logp.exp()
+        entropy_per_sample = -(probs * logp).sum(dim=1)   # H(p) = -∑ p log p
+        loss = entropy_per_sample.mean()
+
+        return {
+            "logits": logits,
+            "probs": probs,
+            "pred": logits.argmax(1),
+            "entropy": entropy_per_sample,  # shape: (B,)
+            "loss": loss                    # scalar
+        }
