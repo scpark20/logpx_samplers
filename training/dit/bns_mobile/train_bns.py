@@ -87,7 +87,7 @@ print('done')
 # ===============================
 # Solver / Optimizer / Scheduler
 # ===============================
-from solvers.competing.bns.bns_solver import BNS_Solver
+from solvers.competing.bns.bns_solver_sep import BNS_Solver
 
 noise_schedule = model.get_noise_schedule()
 solver = BNS_Solver(noise_schedule,
@@ -95,7 +95,7 @@ solver = BNS_Solver(noise_schedule,
         skip_type='time_uniform',
         flow_shift=1.0,
         algorithm_type='dual_prediction',
-        checkpoint=True).to(device)
+        checkpoint=False).to(device)
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
 
 # ---- Scheduler: Pure Cosine ----
