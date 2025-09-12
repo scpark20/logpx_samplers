@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export DPM_TQDM=${DPM_TQDM:-False}
-export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-1}
+export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 
-STEPS=(9 7 5 3)
+#STEPS=(9 7 5 3)
+STEPS=(8 6 4)
 
 for s in "${STEPS[@]}"; do
   LOG="logs/dit/traj/s${s}"
