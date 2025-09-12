@@ -14,8 +14,8 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-# GMFLOW = os.path.join("submodules", "GMFlow")
-# sys.path.insert(0, GMFLOW)
+GMFLOW = os.path.join("submodules", "GMFlow")
+sys.path.insert(0, GMFLOW)
 
 # (arch, weight_fullname) — 문자열 그대로 Classifier에 넘겨 사용
 CLASSIFIER_MODELS = [
@@ -26,7 +26,7 @@ CLASSIFIER_MODELS = [
 # CLI: 요청대로 세 가지만 제어
 # ===============================
 def get_args():
-    p = argparse.ArgumentParser(description="GDual training (only 3 overrides)")
+    p = argparse.ArgumentParser(description="DS training (only 3 overrides)")
     p.add_argument('--n_steps',    type=int, default=3)
     p.add_argument('--n_classifiers',    type=int, default=1)
     p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
@@ -87,30 +87,15 @@ print('done')
 # ===============================
 # Solver / Optimizer / Scheduler
 # ===============================
-from solvers.taylor.solver.gdual_solver import GDual_Solver
-from solvers.taylor.transform.logaffine_transform import LogAffineTransform
-from solvers.taylor.extractor.table_extractor import Extractor
+from solvers.competing.ds.ds_solver_diffusion import DS_Solver
 
 noise_schedule = model.get_noise_schedule()
-extractor = Extractor(steps=config.n_steps)
-transform = LogAffineTransform(gamma_push=True, gamma_max=2, tau_offset=1, kappa_max=2, eps=1e-2)
-solver = GDual_Solver(
-    noise_schedule,
-    steps=config.n_steps,
-    transform=transform,
-    param_extractor=extractor,
-    skip_type="time_uniform_flow",
-    flow_shift=1.0,
-    pred_order=1,
-    corr_order=2,
-    order1_kappa=True,
-    order2_kappa=True,
-    use_corrector=True,
-    time_learning=True,
-    train_mode=True,
-    checkpoint=False
-).to(device)
-
+solver = DS_Solver(noise_schedule,
+        config.n_steps,
+        skip_type='time_uniform',
+        flow_shift=1.0,
+        algorithm_type='data_prediction',
+        checkpoint=True).to(device)
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
 
 # ---- Scheduler: Pure Cosine ----
