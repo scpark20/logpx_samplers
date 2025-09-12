@@ -17,7 +17,7 @@ for s in "${STEPS[@]}"; do
   echo ">>> n_steps=${s} -> ${LOG}"
   mkdir -p "$LOG"
 
-  python -m training.pixart_alpha.traj.train_gdual \
+  python -m training.pixart_alpha.traj2.train_gdual \
     --n_steps "$s" \
     --log_dir "$LOG"
 done
