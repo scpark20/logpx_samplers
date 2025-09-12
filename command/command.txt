@@ -72,6 +72,11 @@ scp -r -P 22223 s3_n8 scpark@220.117.157.23:/data/scpark/logs/gmdit/which/
 scp -r -P 22223 s9_n16 scpark@220.117.157.23:/data/scpark/logs/gmdit/which/
 scp -r -P 22223 which scpark@220.117.157.23:/data/scpark/logs/gmdit/
 scp -r -P 22223 which scpark@220.117.157.23:/data/scpark/logs/gmdit/
+scp -r -P 22223 which scpark@220.117.157.23:/data/scpark/logs/sana/
+scp -r -P 22223 rn scpark@220.117.157.23:/data/scpark/logs/sana/
+scp -r -P 22223 rn scpark@220.117.157.23:/data/scpark/logs/pixart_alpha/
+scp -r -P 22223 traj2 scpark@220.117.157.23:/data/scpark/logs/pixart_alpha/
+scp -r -P 22223 gmdit scpark@220.117.157.23:/data/scpark/logs/
 
 5.5 logs 받기
 scp -P 22223 scpark@220.117.157.23:/data/scpark/logs_0828.zip .
@@ -91,6 +96,11 @@ scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/gmdit/which .
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/pixart_alpha .
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/gmdit/multi .
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/sana25 .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/dit/mobile .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/gmdit/mobile .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/sana/which .
+scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/edm .
+scp -r -P 22223 scpark@220.117.157.23:/home/scpark/logpx_samplers/logs/edm .
 
 SANA
 scp -r -P 22223 scpark@220.117.157.23:/data/scpark/logs/sana/bns .
@@ -107,6 +117,7 @@ scp -P 22223 valid4.5.zip scpark@220.117.157.23:/dataset/sana
 scp -P 22223 /dataset/sana/*.zip scpark@220.117.157.23:/dataset/sana/
 scp -P 22223 /dataset/sana/train4.5_1k.zip scpark@220.117.157.23:/dataset/sana/
 scp -P 22223 train3.5_1k_traj.zip scpark@220.117.157.23:/dataset/pixart_alpha3.5/
+scp -r -P 22223 edm scpark@220.117.157.23:/dataset/
 
 7. stats 받기
 scp -P 22223 scpark@220.117.157.23:/dataset/dit/stats.pt /dataset/dit/
