@@ -19,7 +19,6 @@ from tqdm import tqdm
 def get_args():
     p = argparse.ArgumentParser(description="GDual training (only 3 overrides)")
     p.add_argument('--n_steps',    type=int, default=3)
-    p.add_argument('--n_clips',    type=int, default=1)
     p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
     return p.parse_args()
 
@@ -29,11 +28,11 @@ args = get_args()
 # Config (원문 유지 + 3가지만 덮어쓰기)
 # ===============================
 config = EasyDict()
-config.backbone      = 'SANA'
+config.backbone      = 'PixArt-Alpha'
 config.batch_size    = 10
 config.n_valid       = 100
-config.CFG           = 4.5
-config.latent_size   = (32, 16, 16)
+config.CFG           = 3.5
+config.latent_size   = (4, 64, 64)
 
 # LR & Scheduler
 config.base_lr       = 2e-3
@@ -43,7 +42,6 @@ config.total_steps   = 20*1000        # 전체 학습 스텝
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
 config.log_dir       = args.log_dir or config.log_dir
-config.n_clips       = args.n_clips
 # -----------------------------
 
 # Loss
@@ -55,43 +53,21 @@ os.makedirs(config.log_dir, exist_ok=True)
 # ===============================
 # Model (frozen)
 # ===============================
-from backbones.sana import SANA
+from backbones.pixart_alpha import PixArtAlpha
 from utils.open_clip import OpenCLIPEmbedder
 
 CLIP_MODELS = [
-    ('ViT-H-14-378-quickgelu', 'dfn5b'),  # MSCOCO: 63.76% (Rank 1)
-    ('coca_ViT-L-14', 'mscoco_finetuned_laion2b_s13b_b90k'),  # MSCOCO: 60.28% (Rank 7)
-    ('EVA02-E-14', 'laion2b_s4b_b115k'),  # MSCOCO: 58.92% (Rank 13)
-    ('convnext_xxlarge', 'laion2b_s34b_b82k_augreg'),  # MSCOCO: 58.34% (Rank 19)
-    ('ViT-B-16-SigLIP-256', 'webli'),  # MSCOCO: 57.24% (Rank 26)
-
-    ('EVA02-L-14-336', 'merged2b_s6b_b61k'),  # MSCOCO: 56.05% (Rank 32)
-    ('ViT-L-14', 'commonpool_xl_laion_s13b_b90k'),  # MSCOCO: 55.13% (Rank 38)
-    ('convnext_base_w', 'laion_aesthetic_s13b_b82k'),  # MSCOCO: 52.38% (Rank 45)
-    ('convnext_base_w_320', 'laion_aesthetic_s13b_b82k_augreg'),  # MSCOCO: 51.42% (Rank 51)
-    ('ViT-B-16-plus-240', 'laion400m_e32'),  # MSCOCO: 49.79% (Rank 57)
-
-    ('ViT-B-32', 'laion2b_e16'),  # MSCOCO: 47.68% (Rank 64)
-    ('ViT-B-32-quickgelu', 'metaclip_fullcc'),  # MSCOCO: 46.62% (Rank 70)
-    ('RN50x16', 'openai'),  # MSCOCO: 45.38% (Rank 76)
-    ('ViT-B-32', 'laion400m_e31'),  # MSCOCO: 43.27% (Rank 83)
     ('RN101', 'openai'),  # MSCOCO: 40.25% (Rank 89)
-    
-    ('ViT-B-16', 'commonpool_l_text_s1b_b8k'),  # MSCOCO: 37.30% (Rank 95)
-    ('ViT-B-16', 'commonpool_l_s1b_b8k'),  # MSCOCO: 28.55% (Rank 102)
-    ('ViT-B-32', 'commonpool_m_text_s128m_b4k'),  # MSCOCO: 14.52% (Rank 108)
-    ('ViT-B-32', 'commonpool_s_clip_s13m_b4k'),  # MSCOCO: 2.24% (Rank 114)
-    ('coca_ViT-B-32', 'mscoco_finetuned_laion2b_s13b_b90k'),  # MSCOCO: 0.60% (Rank 121)
 ]
 
-if config.backbone == 'SANA':
-    model = SANA(trainable=True)  # 내부 구현에 맞춰 유지
+if config.backbone == 'PixArt-Alpha':
+    model = PixArtAlpha(trainable=True)  # 내부 구현에 맞춰 유지
     model.set_freeze()
 device = model.device
 print(model)
 
 if 'clip' in config.losses:
-    model_name, pretrained = CLIP_MODELS[config.n_clips]
+    model_name, pretrained = CLIP_MODELS[0]
     clip = OpenCLIPEmbedder(
             model_name=model_name,
             pretrained=pretrained,
@@ -114,8 +90,7 @@ solver = GDual_Solver(
     steps=config.n_steps,
     transform=transform,
     param_extractor=extractor,
-    skip_type="time_uniform_flow",
-    flow_shift=3.0,
+    skip_type="time_uniform",    
     pred_order=1,
     corr_order=2,
     order1_kappa=True,
@@ -123,7 +98,7 @@ solver = GDual_Solver(
     use_corrector=True,
     time_learning=True,
     train_mode=True,
-    checkpoint=False
+    checkpoint=True
 ).to(device)
 
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
