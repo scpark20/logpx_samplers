@@ -89,7 +89,7 @@ solver = GDual_Solver(
     use_corrector=True,
     time_learning=True,
     train_mode=True,
-    checkpoint=False
+    checkpoint=True
 ).to(device)
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
 
