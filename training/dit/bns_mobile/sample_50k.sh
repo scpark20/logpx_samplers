@@ -21,7 +21,7 @@ N_SAMPLES=50000
 SEED_OFFSET=0
 
 SOLVERS=("BNS-Solver_Sep")
-NFES=(9)
+NFES=(8 6 4)
 CFGS=(1.5)
 
 # 사용 GPU 개수 -> nproc

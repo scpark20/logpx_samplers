@@ -2,14 +2,14 @@
 set -e
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=0
 
 # 🔇 torchrun OMP 배너 억제(사전에 지정)
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=convnext
+TAG=rn
 MODEL=PixArt-Alpha
 DATA=MSCOCO2014_valid_30k
 BATCH_SIZE=5          # GPU당 배치
@@ -20,7 +20,8 @@ N_SAMPLES=30000
 SEED_OFFSET=0
 
 SOLVERS=("Dual-Solver")
-NFES=(6 5 4 3)
+#NFES=(6 5 4 3)
+NFES=(5)
 CFGS=(3.5)
 
 # 사용 GPU 개수 -> nproc
@@ -32,31 +33,29 @@ BASE_OUT="samplings"   # SAVE_ROOT의 베이스
 for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do
     for cfg in "${CFGS[@]}"; do
-        SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}/${TAG}"
-        PT_DIR="logs/pixart_alpha/convnext/s${nfe}"
-        echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
-        CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
-        DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
-          -m runs.sample_ddp_gloo \
-            --tag "$TAG" \
-            --model "$MODEL" \
-            --solver "$solver" \
-            --algorithm_type "$ALGO" \
-            --skip_type "$SKIP" \
-            --NFE "$nfe" \
-            --CFG "$cfg" \
-            --order "$ORDER" \
-            --data "$DATA" \
-            --save_root "$SAVE_ROOT" \
-            --pt_dir "$PT_DIR" \
-            --pt_criterion "latest" \
-            --n_samples "$N_SAMPLES" \
-            --seed_offset "$SEED_OFFSET" \
-            --batch_size "$BATCH_SIZE" \
-            --output_inception \
-            --output_clean_inception \
-            --output_clip_score
-      done
+      SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}"
+      PT_DIR="logs/pixart_alpha/rn/s${nfe}"
+      echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
+      CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
+      DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
+        -m runs.sample_ddp_gloo \
+          --tag "$TAG" \
+          --model "$MODEL" \
+          --solver "$solver" \
+          --algorithm_type "$ALGO" \
+          --skip_type "$SKIP" \
+          --NFE "$nfe" \
+          --CFG "$cfg" \
+          --order "$ORDER" \
+          --data "$DATA" \
+          --save_root "$SAVE_ROOT" \
+          --pt_dir "$PT_DIR" \
+          --pt_criterion "latest" \
+          --n_samples "$N_SAMPLES" \
+          --seed_offset "$SEED_OFFSET" \
+          --batch_size "$BATCH_SIZE" \
+          --output_inception \
+          --output_clip_score
     done
   done
 done

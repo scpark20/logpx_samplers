@@ -3,11 +3,11 @@ set -euo pipefail
 export DPM_TQDM=${DPM_TQDM:-False}
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 
-STEPS=(5 4 3)
+STEPS=(6 5 4 3)
 
 for s in "${STEPS[@]}"; do
   
-    LOG="logs/sana/ds_rn/s${s}"
+    LOG="logs/pixart_alpha/bns_rn/s${s}"
 
     # # 이미 로그 디렉토리가 있으면 스킵
     # if [[ -d "$LOG" ]]; then
@@ -18,7 +18,7 @@ for s in "${STEPS[@]}"; do
     echo ">>> n_steps=${s} -> ${LOG}"
     mkdir -p "$LOG"
 
-    python -m training.sana.ds_rn.train \
+    python -m training.pixart_alpha.bns_rn.train_gdual \
       --n_steps "$s" \
       --log_dir "$LOG"
 done

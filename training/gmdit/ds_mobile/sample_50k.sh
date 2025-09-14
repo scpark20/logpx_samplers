@@ -12,7 +12,7 @@ export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 TAG=ds_mobile
 MODEL=GMDiT
 DATA=ImageNet
-BATCH_SIZE=10          # GPU당 배치
+BATCH_SIZE=2          # GPU당 배치
 ALGO=vector_prediction
 SKIP=time_uniform_flow
 FLOW_SHIFT=1.0
@@ -21,7 +21,7 @@ N_SAMPLES=50000
 SEED_OFFSET=0
 
 SOLVERS=("DS-Solver_Flow")
-NFES=(7)
+NFES=(6 4)
 CFGS=(1.4)
 
 # 사용 GPU 개수 -> nproc
