@@ -78,13 +78,13 @@ print('done')
 # ===============================
 # Solver / Optimizer / Scheduler
 # ===============================
-from solvers.competing.bns.bns_solver_sep import BNS_Solver
+from solvers.competing.ds.ds_solver_diffusion import DS_Solver
 
 noise_schedule = model.get_noise_schedule()
-solver = BNS_Solver(noise_schedule,
+solver = DS_Solver(noise_schedule,
         config.n_steps,
         skip_type='time_uniform',
-        algorithm_type='dual_prediction',
+        algorithm_type='data_prediction',
         checkpoint=True).to(device)
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
 
