@@ -10,7 +10,6 @@ from easydict import EasyDict
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
@@ -18,7 +17,7 @@ from tqdm import tqdm
 # CLI: 요청대로 세 가지만 제어
 # ===============================
 def get_args():
-    p = argparse.ArgumentParser(description="BNS training (only 3 overrides)")
+    p = argparse.ArgumentParser(description="DS training (only 3 overrides)")
     p.add_argument('--n_steps',    type=int, default=3)
     p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
     return p.parse_args()
@@ -32,7 +31,7 @@ config = EasyDict()
 config.backbone      = 'SANA'
 config.batch_size    = 10
 config.n_valid       = 100
-config.CFG           = 4.5
+config.CFG           = 2.5
 config.latent_size   = (32, 16, 16)
 
 # LR & Scheduler
@@ -43,14 +42,11 @@ config.total_steps   = 20*1000        # 전체 학습 스텝
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
 config.log_dir       = args.log_dir or config.log_dir
-config.train_pt_dir  = '/dataset/sana/train4.5_1k'
-config.valid_pt_dir  = '/dataset/sana/valid4.5_100'
 # -----------------------------
 
 # Loss
-config.classifier = EasyDict()
-config.losses = ['mse_loss']
-config.main_loss = 'mse_loss'
+config.losses = ['cosine', 'clip']
+config.main_loss = 'clip'
 
 os.makedirs(config.log_dir, exist_ok=True)
 
@@ -58,21 +54,34 @@ os.makedirs(config.log_dir, exist_ok=True)
 # Model (frozen)
 # ===============================
 from backbones.sana import SANA
+from utils.open_clip import OpenCLIPEmbedder
+
+CLIP_MODELS = [
+    ('RN101', 'openai'),  # MSCOCO: 40.25% (Rank 89)
+]
 
 if config.backbone == 'SANA':
     model = SANA(trainable=True)  # 내부 구현에 맞춰 유지
     model.set_freeze()
 device = model.device
 print(model)
+
+if 'clip' in config.losses:
+    model_name, pretrained = CLIP_MODELS[0]
+    clip = OpenCLIPEmbedder(
+            model_name=model_name,
+            pretrained=pretrained,
+        ).to(device)
+    
 print('done')
 
 # ===============================
 # Solver / Optimizer / Scheduler
 # ===============================
-from solvers.competing.bns.bns_solver import BNS_Solver
+from solvers.competing.ds.ds_solver_flow import DS_Solver
 
 noise_schedule = model.get_noise_schedule()
-solver = BNS_Solver(noise_schedule,
+solver = DS_Solver(noise_schedule,
         config.n_steps,
         skip_type='time_uniform_flow',
         flow_shift=3.0,
@@ -90,21 +99,6 @@ scheduler = CosineAnnealingLR(
 )
 
 print('solver/optimizer')
-
-# ===============================
-# Dataset / Dataloader
-# ===============================
-from datasets.pt_dataset import PtDataset
-
-train_dataset = PtDataset(config.train_pt_dir)
-print('len(train_dataset) :', len(train_dataset))
-train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
-
-valid_dataset = PtDataset(config.valid_pt_dir)
-print('len(valid_dataset) :', len(valid_dataset))
-valid_loader = DataLoader(valid_dataset, batch_size=config.batch_size, shuffle=False)
-
-print('dataloaders ready')
 
 # ===============================
 # Utils
@@ -128,37 +122,52 @@ def save_checkpoint(global_step, save_dir, solver, optimizer):
     torch.save(ckpt, step_path)
     return step_path
 
+
+def get_clip_loss(raw_output, targets):
+    loss = clip.get_clip_loss(raw_output, texts=targets)
+    return loss
+
 @torch.no_grad()
-def get_valid_loss(valid_loader, device, solver):
+def get_valid_loss(prompts, device, solver):
     solver.eval()
     losses = []
-    for batch in valid_loader:
-        noises  = batch['noise'].to(device, non_blocking=True)
-        conds   = batch['cond']
-        targets = batch['sample'].to(device, non_blocking=True)
+    for i, prompt in enumerate(prompts):
+        noises = torch.randn(1, *config.latent_size).to(device, non_blocking=True)
+        conds = [prompt]
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
-        with torch.no_grad():
+        with torch.no_grad(), torch.autocast(device_type='cuda', dtype=torch.bfloat16):
             latent_pred = solver.sample(noises, model_fn)['samples']
-            loss = torch.log(F.mse_loss(latent_pred, targets))
-            losses.append(loss.item())
+            if 'cosine' in config.losses:
+                sample_pred = model.decode_vae(latent_pred, raw_output=True)['raw_output']
+                loss = clip.get_cossim_loss(sample_pred, conds)
+                losses.append(loss.item())
+
     return np.mean(losses)
 
-def do_train_loop(device, train_loader, solver, optimizer, global_step):
+
+def do_train_loop(device, solver, optimizer, global_step):
     solver.train()
-    pbar = tqdm(train_loader)
+    if config.main_loss == 'clip':
+        data = np.load('prompts/mscoco2014_train.npz')['arr_0'].tolist()
+        prompts = [d[1] for d in data]
+        pbar = tqdm(range(1000))
     
-    for batch in pbar:
+    for _, batch in enumerate(pbar):
         if global_step >= config.total_steps:
             break
 
         optimizer.zero_grad(set_to_none=True)
-        noises  = batch['noise'].to(device, non_blocking=True)
-        conds   = batch['cond']
-        targets = batch['sample'].to(device, non_blocking=True)        
+        if config.main_loss == 'clip':
+            noises = torch.randn(config.batch_size, *config.latent_size).to(device, non_blocking=True)
+            indexes = np.random.randint(0, len(prompts), size=(len(noises),))
+            conds = [prompts[index] for index in indexes]
+        
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
             latent_pred = solver.sample(noises, model_fn)['samples']
-            loss = torch.log(F.mse_loss(latent_pred, targets))
+            if 'clip' == config.main_loss:
+                sample_pred = model.decode_vae(latent_pred, raw_output=True)['raw_output']
+                loss = get_clip_loss(sample_pred, conds)
                 
         abort_if_bad("train", loss, global_step)  # ← 즉시 중단
         loss.backward()
@@ -175,19 +184,33 @@ def do_train_loop(device, train_loader, solver, optimizer, global_step):
 # ===============================
 # Train
 # ===============================
+
+def set_seed(seed=42):
+    import random
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
 def main():
+    set_seed()
+    
     writer = SummaryWriter(config.log_dir)
     print('tensorboard:', config.log_dir)
 
     global_step = 0
     while True:
-        loss = get_valid_loss(valid_loader, device, solver)
+        data = np.load('prompts/mscoco2014_valid.npz')['arr_0'].tolist()
+        prompts = [d[1] for d in data][:config.n_valid]
+        loss = get_valid_loss(prompts, device, solver)
         writer.add_scalar('valid_loss', loss, global_step)
         save_checkpoint(global_step, config.log_dir, solver, optimizer) 
+
         if global_step >= config.total_steps:
             break
-        global_step = do_train_loop(device, train_loader, solver, optimizer, global_step)
         
+        global_step = do_train_loop(device, solver, optimizer, global_step)
+
     print('E-N-D')
     
 if __name__ == "__main__":

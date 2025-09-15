@@ -2,7 +2,7 @@
 set -e
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=0
 
 # 🔇 torchrun OMP 배너 억제(사전에 지정)
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}

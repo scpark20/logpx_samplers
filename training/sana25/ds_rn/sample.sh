@@ -12,7 +12,7 @@ export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 TAG=ds_rn
 MODEL=SANA
 DATA=MSCOCO2014_valid_30k
-BATCH_SIZE=10          # GPU당 배치
+BATCH_SIZE=5          # GPU당 배치
 ALGO=vector_prediction
 SKIP=time_uniform_flow
 FLOW_SHIFT=3.0
@@ -21,8 +21,8 @@ N_SAMPLES=30000
 SEED_OFFSET=0
 
 SOLVERS=("DS-Solver_Flow")
-NFES=(6 5 4 3)
-CFGS=(4.5)
+NFES=(2 3 4 5 6)
+CFGS=(2.5)
 
 # 사용 GPU 개수 -> nproc
 IFS=',' read -ra _GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
