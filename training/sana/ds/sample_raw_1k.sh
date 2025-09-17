@@ -2,26 +2,26 @@
 set -e
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=0
 
 # 🔇 torchrun OMP 배너 억제(사전에 지정)
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=ds
+TAG=ds_raw
 MODEL=SANA
-DATA=MSCOCO2014_valid
-BATCH_SIZE=1          # GPU당 배치
+DATA=MSCOCO2014_valid_30k
+BATCH_SIZE=5          # GPU당 배치
 ALGO=vector_prediction
 SKIP=time_uniform_flow
 FLOW_SHIFT=3.0
 ORDER=2
-N_SAMPLES=10000
+N_SAMPLES=1000
 SEED_OFFSET=0
 
 SOLVERS=("DS-Solver_Flow")
-NFES=(3 4 5 6)
+NFES=(6 5 4 3)
 CFGS=(4.5)
 
 # 사용 GPU 개수 -> nproc
@@ -55,8 +55,7 @@ for solver in "${SOLVERS[@]}"; do
           --n_samples "$N_SAMPLES" \
           --seed_offset "$SEED_OFFSET" \
           --batch_size "$BATCH_SIZE" \
-          --output_inception \
-          --output_clip_score
+          --output_raw
     done
   done
 done

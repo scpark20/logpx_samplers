@@ -143,10 +143,23 @@ def get_valid_loss(valid_loader, device, solver):
             losses.append(loss.item())
     return np.mean(losses)
 
+def _trimmed_mean_excl_minmax(values):
+    """Return mean excluding a single min and max. If len<=2, fallback to simple mean."""
+    n = len(values)
+    if n == 0:
+        return float("nan")
+    if n <= 2:
+        return float(sum(values)) / n
+    s = sorted(values)
+    core = s[1:-1]
+    return float(sum(core)) / len(core)
+
+import time
 def do_train_loop(device, train_loader, solver, optimizer, global_step):
     solver.train()
     pbar = tqdm(train_loader)
     
+    elapsed_times = {'sampling': [], 'backward': []}
     for batch in pbar:
         if global_step >= config.total_steps:
             break
@@ -157,18 +170,33 @@ def do_train_loop(device, train_loader, solver, optimizer, global_step):
         targets = batch['sample'].to(device, non_blocking=True)        
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+            t0 = time.time()
             latent_pred = solver.sample(noises, model_fn)['samples']
+            elapsed_times['sampling'].append(time.time() - t0)
+            t0 = time.time()
             loss = torch.log(F.mse_loss(latent_pred, targets))
                 
         abort_if_bad("train", loss, global_step)  # ← 즉시 중단
         loss.backward()
         torch.nn.utils.clip_grad_norm_(solver.parameters(), 1.0)
         optimizer.step()
+        elapsed_times['backward'].append(time.time() - t0)
+
         scheduler.step()   # ← lr 업데이트 포인트
         lr_now = optimizer.param_groups[0]["lr"]
         pbar.set_postfix({'loss': loss.item(), 'lr': lr_now})
         global_step += 1
-        
+
+     # ---- 여기서 트리밍 평균 출력 ----
+    samp_avg = _trimmed_mean_excl_minmax(elapsed_times['sampling'])
+    bwd_avg  = _trimmed_mean_excl_minmax(elapsed_times['backward'])
+    n_iter   = len(elapsed_times['sampling'])
+
+    # 콘솔 출력 (ms)
+    print(f"[TIME] sampling avg (excl min/max): {samp_avg*1000:.2f} ms | "
+          f"backward avg (excl min/max): {bwd_avg*1000:.2f} ms | "
+          f"iters: {n_iter}")
+    
     return global_step
 
 

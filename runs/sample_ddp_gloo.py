@@ -29,7 +29,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--data',            type=str,   default='MSCOCO2014_valid')
     parser.add_argument('--save_root',       type=str,   default='/data/scpark/samplings/')
     parser.add_argument('--pt_dir',          type=str,   default=None)
-    parser.add_argument('--pt_criterion',          type=str,   default='train_loss')
+    parser.add_argument('--pt_criterion',    type=str,   default='train_loss')
+    parser.add_argument('--pt_step',          type=str,   default=None)
     parser.add_argument('--n_samples',       type=int,   default=100)
     parser.add_argument('--batch_size',      type=int,   default=5)
     parser.add_argument('--output_noise',    action='store_true',  default=False)
@@ -41,6 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--output_sample',          action='store_true',  default=False)
     parser.add_argument('--output_clip',            action='store_true',  default=False)
     parser.add_argument('--output_clip_score',      action='store_true',  default=False)
+    parser.add_argument('--output_raw',             action='store_true',  default=False)
+    parser.add_argument('--clip_model',            type=str,   default='ViT-B/16')
     parser.add_argument('--output_png', action='store_true', default=False,
                         help='Decode VAE output and save PNGs to save_dir as {gidx:06d}.png')
     parser.add_argument('--build_npz', action='store_true', default=False,
@@ -247,7 +250,7 @@ def main():
     if config.output_clean_inception:
         clean_inception = CleanFIDInception().to(device)
     if config.output_clip or config.output_clip_score:
-        clip = CLIPEmbedder(device=device)
+        clip = CLIPEmbedder(model_name=config.clip_model, device=device)
 
     # 전역 인덱스 샤딩 (seed = seed_offset + global_idx 유지)
     all_idx = list(range(config.n_samples))
@@ -286,7 +289,7 @@ def main():
                             algorithm_type=config.algorithm_type, k=config.k, solver=config.solver).to(device)
             if config.pt_dir is not None:
                 from utils.util import get_pt
-                best_pt = get_pt(config.pt_dir, config.pt_criterion)
+                best_pt = get_pt(config.pt_dir, config.pt_criterion, config.pt_step)
                 state_dict = torch.load(best_pt, map_location='cpu', weights_only=False)['solver_state_dict']
                 solver.load_state_dict(state_dict, strict=False)
 
@@ -296,7 +299,7 @@ def main():
             needs_decode = (
                 config.output_png or
                 config.output_inception or config.output_clean_inception or
-                config.output_tf_inception or config.output_clip or config.output_clip_score
+                config.output_tf_inception or config.output_clip or config.output_clip_score or config.output_raw
             )
             if needs_decode:
                 decoded = model.decode_vae(outputs['samples'], raw_output=True, pil_output=True)
@@ -341,9 +344,10 @@ def main():
                     img = decoded['pil_output'][j]   # PIL.Image.Image
                     (Path(config.save_dir) / f"{gidx:06d}.png").parent.mkdir(parents=True, exist_ok=True)
                     img.save(Path(config.save_dir) / f"{gidx:06d}.png")
-
                 if config.output_sample:
                     output['sample'] = compact(samples[j])
+                if config.output_raw:
+                    output['raw'] = compact(decoded['raw_output'][j])
                 if config.output_inception:
                     output['inception_feature'] = compact(inception_features[j])
                 if config.output_clean_inception:

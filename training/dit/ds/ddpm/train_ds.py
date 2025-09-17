@@ -158,10 +158,23 @@ def interp_traj(X, t, s):
     w  = ((s - t[i0]) / (t[i1] - t[i0])).to(X.dtype).view(1, -1, 1, 1, 1)
     return torch.lerp(X[:, i0], X[:, i1], w)
 
+def _trimmed_mean_excl_minmax(values):
+    """Return mean excluding a single min and max. If len<=2, fallback to simple mean."""
+    n = len(values)
+    if n == 0:
+        return float("nan")
+    if n <= 2:
+        return float(sum(values)) / n
+    s = sorted(values)
+    core = s[1:-1]
+    return float(sum(core)) / len(core)
+
+import time
 def do_train_loop(device, train_loader, solver, optimizer, global_step):
     solver.train()
     pbar = tqdm(train_loader)
     
+    elapsed_times = {'sampling': [], 'backward': []}
     for batch in pbar:
         if global_step >= config.total_steps:
             break
@@ -175,7 +188,10 @@ def do_train_loop(device, train_loader, solver, optimizer, global_step):
 
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+            t0 = time.time()
             outputs = solver.sample(noises, model_fn, output_traj=True)
+            elapsed_times['sampling'].append(time.time() - t0)
+            t0 = time.time()
             
         if config.main_loss == 'traj_loss':
             target_traj = interp_traj(teacher_traj, teacher_timesteps, outputs['timesteps'])
@@ -187,10 +203,21 @@ def do_train_loop(device, train_loader, solver, optimizer, global_step):
         loss.backward()
         torch.nn.utils.clip_grad_norm_(solver.parameters(), 1.0)
         optimizer.step()
+        elapsed_times['backward'].append(time.time() - t0)
         scheduler.step()   # ← lr 업데이트 포인트
         lr_now = optimizer.param_groups[0]["lr"]
         pbar.set_postfix({'loss': loss.item(), 'lr': lr_now})
         global_step += 1
+
+    # ---- 여기서 트리밍 평균 출력 ----
+    samp_avg = _trimmed_mean_excl_minmax(elapsed_times['sampling'])
+    bwd_avg  = _trimmed_mean_excl_minmax(elapsed_times['backward'])
+    n_iter   = len(elapsed_times['sampling'])
+
+    # 콘솔 출력 (ms)
+    print(f"[TIME] sampling avg (excl min/max): {samp_avg*1000:.2f} ms | "
+          f"backward avg (excl min/max): {bwd_avg*1000:.2f} ms | "
+          f"iters: {n_iter}")
         
     if global_step >= config.total_steps:
         return global_step
