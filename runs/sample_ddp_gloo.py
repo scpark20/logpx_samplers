@@ -43,7 +43,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--output_clip',            action='store_true',  default=False)
     parser.add_argument('--output_clip_score',      action='store_true',  default=False)
     parser.add_argument('--output_raw',             action='store_true',  default=False)
-    parser.add_argument('--clip_model',            type=str,   default='ViT-B/16')
+    # (기존) parser.add_argument('--clip_model',            type=str,   default='ViT-B/16')
+    parser.add_argument('--clip_model', type=str, default='ViT-B/16',
+                        help='CLIP model name or comma-separated list (e.g., "ViT-L/14, ViT-L/14@336px")')
     parser.add_argument('--output_png', action='store_true', default=False,
                         help='Decode VAE output and save PNGs to save_dir as {gidx:06d}.png')
     parser.add_argument('--build_npz', action='store_true', default=False,
@@ -245,12 +247,17 @@ def main():
     model  = get_model(config)
     Solver = get_solver(config)
     data   = get_data(config)
+
     if config.output_inception:
         inception = FIDInception().to(device)
     if config.output_clean_inception:
         clean_inception = CleanFIDInception().to(device)
+
+    # ---- CHANGES: CLIP 여러 개 로딩 (콤마 분리) ----
+    clip_models = [m.strip() for m in str(config.clip_model).split(',') if m.strip()]
+    clip_nets = None
     if config.output_clip or config.output_clip_score:
-        clip = CLIPEmbedder(model_name=config.clip_model, device=device)
+        clip_nets = {m: CLIPEmbedder(model_name=m, device=device) for m in clip_models}
 
     # 전역 인덱스 샤딩 (seed = seed_offset + global_idx 유지)
     all_idx = list(range(config.n_samples))
@@ -312,11 +319,20 @@ def main():
             if config.output_tf_inception:
                 tf_feats = tf_inception_encode(decoded['pil_output'])  # np.float32 [B,2048]
                 tf_inception_features = torch.from_numpy(tf_feats).to("cpu", dtype=torch.float32)
-            if config.output_clip:
-                clip_features = clip.encode_image(decoded['raw_output']).detach().cpu()
-            if config.output_clip_score:
+
+            # ---- CHANGES: 여러 CLIP 모델 각각 처리 ----
+            clip_features_dict = {}
+            clip_scores_dict   = {}
+            if config.output_clip and clip_nets is not None:
+                for m, net in clip_nets.items():
+                    clip_features_dict[m] = net.encode_image(decoded['raw_output']).detach().cpu()
+            if config.output_clip_score and clip_nets is not None:
+                # autocast는 그대로 유지
                 with torch.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=torch.cuda.is_available()):
-                    clip_scores = 1 - clip.get_cossim_loss(decoded['raw_output'], conds, clamp_mode='hard', reduction='none').detach().cpu()
+                    for m, net in clip_nets.items():
+                        clip_scores_dict[m] = (
+                            1 - net.get_cossim_loss(decoded['raw_output'], conds, clamp_mode='hard', reduction='none')
+                        ).detach().cpu()
 
             samples = outputs['samples'].detach().cpu()
             if config.output_noise:
@@ -354,10 +370,15 @@ def main():
                     output['clean_inception_feature'] = compact(clean_inception_features[j])
                 if config.output_tf_inception:
                     output['tf_inception_feature'] = compact(tf_inception_features[j])
-                if config.output_clip:
-                    output['clip_feature'] = compact(clip_features[j])
-                if config.output_clip_score:
-                    output['clip_score'] = compact(clip_scores[j])
+
+                # ---- CHANGES: CLIP per-model로 저장 ----
+                if config.output_clip and clip_features_dict:
+                    for m in clip_models:
+                        output[f'clip_feature_{m}'] = compact(clip_features_dict[m][j])
+                if config.output_clip_score and clip_scores_dict:
+                    for m in clip_models:
+                        output[f'clip_score_{m}'] = compact(clip_scores_dict[m][j])
+                    
                 if config.output_noise:
                     output['noise'] = compact(noises[j])
                 if (config.output_traj and (trajs is not None)):
