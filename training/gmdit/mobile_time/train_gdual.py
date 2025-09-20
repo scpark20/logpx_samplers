@@ -14,8 +14,8 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-# GMFLOW = os.path.join("submodules", "GMFlow")
-# sys.path.insert(0, GMFLOW)
+GMFLOW = os.path.join("submodules", "GMFlow")
+sys.path.insert(0, GMFLOW)
 
 # (arch, weight_fullname) — 문자열 그대로 Classifier에 넘겨 사용
 CLASSIFIER_MODELS = [
@@ -38,7 +38,7 @@ args = get_args()
 # Config (원문 유지 + 3가지만 덮어쓰기)
 # ===============================
 config = EasyDict()
-config.backbone      = 'DiT'
+config.backbone      = 'GMDiT'
 config.batch_size    = 10
 config.n_valid       = 100
 config.CFG           = 1.4
@@ -64,11 +64,11 @@ os.makedirs(config.log_dir, exist_ok=True)
 # ===============================
 # Model (frozen)
 # ===============================
-from backbones.dit import DiT
+from backbones.gmdit import GMDiT
 from utils.general_classifier import Classifier
 
-if config.backbone == 'DiT':
-    model = DiT(trainable=True)  # 내부 구현에 맞춰 유지
+if config.backbone == 'GMDiT':
+    model = GMDiT(trainable=True)  # 내부 구현에 맞춰 유지
     model.set_freeze()
 device = model.device
 print(model)
@@ -175,6 +175,7 @@ def get_valid_loss(valid_noises, valid_conds, device, solver):
 
     return np.mean(losses)
 
+
 def _trimmed_mean_excl_minmax(values):
     """Return mean excluding a single min and max. If len<=2, fallback to simple mean."""
     n = len(values)
@@ -242,7 +243,6 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
           f"iters: {n_iter}")
         
     return global_step
-
 
 # ===============================
 # Train

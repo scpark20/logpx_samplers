@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os, sys
+import os 
 import math
 import argparse
 import numpy as np
@@ -10,17 +10,8 @@ from easydict import EasyDict
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-
-# GMFLOW = os.path.join("submodules", "GMFlow")
-# sys.path.insert(0, GMFLOW)
-
-# (arch, weight_fullname) — 문자열 그대로 Classifier에 넘겨 사용
-CLASSIFIER_MODELS = [
-  ("mobilenet_v3_large","MobileNet_V3_Large_Weights.IMAGENET1K_V2"),           # Rank: 84,  Acc@5: 92.566, GFLOPS: 0.22, FID : 9.44
-]
 
 # ===============================
 # CLI: 요청대로 세 가지만 제어
@@ -28,7 +19,6 @@ CLASSIFIER_MODELS = [
 def get_args():
     p = argparse.ArgumentParser(description="GDual training (only 3 overrides)")
     p.add_argument('--n_steps',    type=int, default=3)
-    p.add_argument('--n_classifiers',    type=int, default=1)
     p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
     return p.parse_args()
 
@@ -38,11 +28,11 @@ args = get_args()
 # Config (원문 유지 + 3가지만 덮어쓰기)
 # ===============================
 config = EasyDict()
-config.backbone      = 'DiT'
+config.backbone      = 'PixArt-Alpha'
 config.batch_size    = 10
 config.n_valid       = 100
-config.CFG           = 1.4
-config.latent_size   = (4, 32, 32)
+config.CFG           = 3.5
+config.latent_size   = (4, 64, 64)
 
 # LR & Scheduler
 config.base_lr       = 2e-3
@@ -52,35 +42,36 @@ config.total_steps   = 20*1000        # 전체 학습 스텝
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
 config.log_dir       = args.log_dir or config.log_dir
-config.n_classifiers = args.n_classifiers
 # -----------------------------
 
 # Loss
-config.losses = ['classifier']
-config.main_loss = 'classifier'
+config.losses = ['cosine', 'clip']
+config.main_loss = 'clip'
 
 os.makedirs(config.log_dir, exist_ok=True)
 
 # ===============================
 # Model (frozen)
 # ===============================
-from backbones.dit import DiT
-from utils.general_classifier import Classifier
+from backbones.pixart_alpha import PixArtAlpha
+from utils.open_clip import OpenCLIPEmbedder
 
-if config.backbone == 'DiT':
-    model = DiT(trainable=True)  # 내부 구현에 맞춰 유지
+CLIP_MODELS = [
+    ('RN101', 'openai'),  # MSCOCO: 40.25% (Rank 89)
+]
+
+if config.backbone == 'PixArt-Alpha':
+    model = PixArtAlpha(trainable=True)  # 내부 구현에 맞춰 유지
     model.set_freeze()
 device = model.device
 print(model)
 
-if 'classifier' in config.losses:
-    classifiers = []
-    for arch, weights in CLASSIFIER_MODELS[:config.n_classifiers]:
-        classifier = Classifier(
-                arch=arch,
-                weights=weights,
-            ).to(device)
-        classifiers.append(classifier)
+if 'clip' in config.losses:
+    model_name, pretrained = CLIP_MODELS[0]
+    clip = OpenCLIPEmbedder(
+            model_name=model_name,
+            pretrained=pretrained,
+        ).to(device)
     
 print('done')
 
@@ -99,8 +90,7 @@ solver = GDual_Solver(
     steps=config.n_steps,
     transform=transform,
     param_extractor=extractor,
-    skip_type="time_uniform_flow",
-    flow_shift=1.0,
+    skip_type="time_uniform",    
     pred_order=1,
     corr_order=2,
     order1_kappa=True,
@@ -108,7 +98,7 @@ solver = GDual_Solver(
     use_corrector=True,
     time_learning=True,
     train_mode=True,
-    checkpoint=False
+    checkpoint=True
 ).to(device)
 
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
@@ -147,30 +137,23 @@ def save_checkpoint(global_step, save_dir, solver, optimizer):
     return step_path
 
 
-def get_classifier_loss(raw_output, targets):
-    loss_list = []
-    for classifier in classifiers:
-        loss = classifier(raw_output, targets=targets)['loss']
-        loss_list.append(loss)
-    return torch.mean(torch.stack(loss_list))
+def get_clip_loss(raw_output, targets):
+    loss = clip.get_clip_loss(raw_output, texts=targets)
+    return loss
 
 @torch.no_grad()
-def get_valid_loss(valid_noises, valid_conds, device, solver):
+def get_valid_loss(prompts, device, solver):
     solver.eval()
     losses = []
-    start = 0
-    while True:
-        if start >= len(valid_noises):
-            break
-        noises = valid_noises[start:min(start+config.batch_size, len(valid_noises))]
-        conds = valid_conds[start:min(start+config.batch_size, len(valid_noises))]
-        start += config.batch_size
+    for i, prompt in enumerate(prompts):
+        noises = torch.randn(1, *config.latent_size).to(device, non_blocking=True)
+        conds = [prompt]
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
-        with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+        with torch.no_grad(), torch.autocast(device_type='cuda', dtype=torch.bfloat16):
             latent_pred = solver.sample(noises, model_fn)['samples']
-            if 'classifier' in config.losses:
-                outputs = model.decode_vae(latent_pred, raw_output=True)
-                loss = get_classifier_loss(outputs['raw_output'], targets=conds)
+            if 'cosine' in config.losses:
+                sample_pred = model.decode_vae(latent_pred, raw_output=True)['raw_output']
+                loss = clip.get_cossim_loss(sample_pred, conds)
                 losses.append(loss.item())
 
     return np.mean(losses)
@@ -187,9 +170,12 @@ def _trimmed_mean_excl_minmax(values):
     return float(sum(core)) / len(core)    
 
 import time
-def do_train_loop(device, writer, solver, optimizer, global_step):
+def do_train_loop(device, solver, optimizer, global_step):
     solver.train()
-    pbar = tqdm(range(100))
+    if config.main_loss == 'clip':
+        data = np.load('prompts/mscoco2014_train.npz')['arr_0'].tolist()
+        prompts = [d[1] for d in data]
+        pbar = tqdm(range(1000))
     
     elapsed_times = {'sampling':[], 'decoding':[], 'classification':[], 'backward':[]}
     for _, batch in enumerate(pbar):
@@ -197,9 +183,10 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
             break
 
         optimizer.zero_grad(set_to_none=True)
-        if config.main_loss == 'classifier':
+        if config.main_loss == 'clip':
             noises = torch.randn(config.batch_size, *config.latent_size).to(device, non_blocking=True)
-            conds = torch.randint(0, 1000, size=(len(noises),)).to(device, non_blocking=True)
+            indexes = np.random.randint(0, len(prompts), size=(len(noises),))
+            conds = [prompts[index] for index in indexes]
         
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
@@ -207,12 +194,13 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
             latent_pred = solver.sample(noises, model_fn)['samples']
             elapsed_times['sampling'].append(time.time() - t0)
             t0 = time.time()
-
-            if 'classifier' in config.main_loss:
-                outputs = model.decode_vae(latent_pred, raw_output=True)
+            
+            if 'clip' == config.main_loss:
+                t0 = time.time()
+                sample_pred = model.decode_vae(latent_pred, raw_output=True)['raw_output']
                 elapsed_times['decoding'].append(time.time() - t0)
                 t0 = time.time()
-                loss = get_classifier_loss(outputs['raw_output'], targets=conds)
+                loss = get_clip_loss(sample_pred, conds)
                 elapsed_times['classification'].append(time.time() - t0)
                 t0 = time.time()
                 
@@ -257,22 +245,22 @@ def set_seed(seed=42):
 
 def main():
     set_seed()
-
+    
     writer = SummaryWriter(config.log_dir)
     print('tensorboard:', config.log_dir)
 
     global_step = 0
-    valid_noises = torch.randn(config.n_valid, *config.latent_size).to(device, non_blocking=True)
-    valid_conds = torch.randint(0, 1000, size=(len(valid_noises),)).to(device, non_blocking=True)
     while True:
-        loss = get_valid_loss(valid_noises, valid_conds, device, solver)
+        data = np.load('prompts/mscoco2014_valid.npz')['arr_0'].tolist()
+        prompts = [d[1] for d in data][:config.n_valid]
+        loss = get_valid_loss(prompts, device, solver)
         writer.add_scalar('valid_loss', loss, global_step)
         save_checkpoint(global_step, config.log_dir, solver, optimizer) 
 
         if global_step >= config.total_steps:
             break
         
-        global_step = do_train_loop(device, writer, solver, optimizer, global_step)
+        global_step = do_train_loop(device, solver, optimizer, global_step)
 
     print('E-N-D')
     
