@@ -125,11 +125,19 @@ class SyntheticDataset(Dataset):
 # ===============================
 train_dataset = SyntheticDataset(1000, config.latent_size)
 print('len(train_dataset) :', len(train_dataset))
-train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+train_loader = DataLoader(
+    train_dataset, batch_size=config.batch_size, shuffle=True,
+    pin_memory=True, num_workers=max(2, os.cpu_count() // 2),
+    persistent_workers=True, drop_last=True
+)
 
 valid_dataset = SyntheticDataset(100, config.latent_size)
 print('len(valid_dataset) :', len(valid_dataset))
-valid_loader = DataLoader(valid_dataset, batch_size=config.batch_size, shuffle=False)
+valid_loader = DataLoader(
+    valid_dataset, batch_size=config.batch_size, shuffle=False,
+    pin_memory=True, num_workers=max(2, os.cpu_count() // 2),
+    persistent_workers=True, drop_last=True
+)
 
 print('dataloaders ready')
 
