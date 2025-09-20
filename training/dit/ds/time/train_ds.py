@@ -214,9 +214,12 @@ def do_train_loop(device, train_loader, solver, optimizer, global_step):
 
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+            torch.cuda.synchronize()
             t0 = time.time()
             outputs = solver.sample(noises, model_fn, output_traj=True)
+            torch.cuda.synchronize()
             elapsed_times['sampling'].append(time.time() - t0)
+            torch.cuda.synchronize()
             t0 = time.time()
             
         if config.main_loss == 'traj_loss':
@@ -229,6 +232,7 @@ def do_train_loop(device, train_loader, solver, optimizer, global_step):
         loss.backward()
         torch.nn.utils.clip_grad_norm_(solver.parameters(), 1.0)
         optimizer.step()
+        torch.cuda.synchronize()
         elapsed_times['backward'].append(time.time() - t0)
         scheduler.step()   # ← lr 업데이트 포인트
         lr_now = optimizer.param_groups[0]["lr"]

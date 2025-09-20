@@ -203,23 +203,31 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
         
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+            torch.cuda.synchronize()
             t0 = time.time()
             latent_pred = solver.sample(noises, model_fn)['samples']
+            torch.cuda.synchronize()
             elapsed_times['sampling'].append(time.time() - t0)
+            torch.cuda.synchronize()
             t0 = time.time()
 
             if 'classifier' in config.main_loss:
                 outputs = model.decode_vae(latent_pred, raw_output=True)
+                torch.cuda.synchronize()
                 elapsed_times['decoding'].append(time.time() - t0)
+                torch.cuda.synchronize()
                 t0 = time.time()
                 loss = get_classifier_loss(outputs['raw_output'], targets=conds)
+                torch.cuda.synchronize()
                 elapsed_times['classification'].append(time.time() - t0)
+                torch.cuda.synchronize()
                 t0 = time.time()
                 
         abort_if_bad("train", loss, global_step)  # ← 즉시 중단
         loss.backward()
         torch.nn.utils.clip_grad_norm_(solver.parameters(), 1.0)
         optimizer.step()
+        torch.cuda.synchronize()
         elapsed_times['backward'].append(time.time() - t0)
 
         scheduler.step()   # ← lr 업데이트 포인트
