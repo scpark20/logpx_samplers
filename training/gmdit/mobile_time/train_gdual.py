@@ -176,16 +176,31 @@ def get_valid_loss(valid_noises, valid_conds, device, solver):
     return np.mean(losses)
 
 
-def _trimmed_mean_excl_minmax(values):
-    """Return mean excluding a single min and max. If len<=2, fallback to simple mean."""
+def _trimmed_mean_std_excl_minmax(values):
+    """
+    Return (mean, std) excluding a single min and max.
+    - If len(values) == 0: returns (nan, nan)
+    - If len(values) <= 2: fallback to simple mean & std over all values
+    - Otherwise: drop one min and one max, then compute mean & std over the core
+    Std is population std (ddof=0).
+    """
     n = len(values)
     if n == 0:
-        return float("nan")
+        return float("nan"), float("nan")
+
+    def _mean_std(arr):
+        m = float(sum(arr)) / len(arr)
+        if len(arr) <= 1:
+            return m, 0.0
+        var = sum((x - m) ** 2 for x in arr) / len(arr)  # population variance
+        return m, var ** 0.5
+
     if n <= 2:
-        return float(sum(values)) / n
+        return _mean_std(values)
+
     s = sorted(values)
-    core = s[1:-1]
-    return float(sum(core)) / len(core)    
+    core = s[1:-1]  # exclude one min and one max
+    return _mean_std(core)
 
 import time
 def do_train_loop(device, writer, solver, optimizer, global_step):
@@ -204,23 +219,31 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
         
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+            torch.cuda.synchronize()
             t0 = time.time()
             latent_pred = solver.sample(noises, model_fn)['samples']
+            torch.cuda.synchronize()
             elapsed_times['sampling'].append(time.time() - t0)
+            torch.cuda.synchronize()
             t0 = time.time()
 
             if 'classifier' in config.main_loss:
                 outputs = model.decode_vae(latent_pred, raw_output=True)
+                torch.cuda.synchronize()
                 elapsed_times['decoding'].append(time.time() - t0)
+                torch.cuda.synchronize()
                 t0 = time.time()
                 loss = get_classifier_loss(outputs['raw_output'], targets=conds)
+                torch.cuda.synchronize()
                 elapsed_times['classification'].append(time.time() - t0)
+                torch.cuda.synchronize()
                 t0 = time.time()
                 
         abort_if_bad("train", loss, global_step)  # ← 즉시 중단
         loss.backward()
         torch.nn.utils.clip_grad_norm_(solver.parameters(), 1.0)
         optimizer.step()
+        torch.cuda.synchronize()
         elapsed_times['backward'].append(time.time() - t0)
 
         scheduler.step()   # ← lr 업데이트 포인트
@@ -228,19 +251,22 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
         pbar.set_postfix({'loss': loss.item(), 'lr': lr_now})
         global_step += 1
 
-    # ---- 여기서 트리밍 평균 출력 ----
-    samp_avg = _trimmed_mean_excl_minmax(elapsed_times['sampling'])
-    dec_avg  = _trimmed_mean_excl_minmax(elapsed_times['decoding'])
-    class_avg = _trimmed_mean_excl_minmax(elapsed_times['classification'])
-    bwd_avg  = _trimmed_mean_excl_minmax(elapsed_times['backward'])
-    n_iter   = len(elapsed_times['sampling'])
+    # ---- 여기서 트리밍 평균/표준편차 출력 ----
+    samp_mean,  samp_std  = _trimmed_mean_std_excl_minmax(elapsed_times['sampling'])
+    dec_mean,   dec_std   = _trimmed_mean_std_excl_minmax(elapsed_times['decoding'])
+    class_mean, class_std = _trimmed_mean_std_excl_minmax(elapsed_times['classification'])
+    bwd_mean,   bwd_std   = _trimmed_mean_std_excl_minmax(elapsed_times['backward'])
+    n_iter = len(elapsed_times['sampling'])
 
     # 콘솔 출력 (ms)
-    print(f"[TIME] sampling avg (excl min/max): {samp_avg*1000:.2f} ms | "
-          f"decoding avg (excl min/max): {dec_avg*1000:.2f} ms | "
-          f"classification avg (excl min/max): {class_avg*1000:.2f} ms | "
-          f"backward avg (excl min/max): {bwd_avg*1000:.2f} ms | "
-          f"iters: {n_iter}")
+    print(
+        "[TIME] "
+        f"sampling (excl min/max): {samp_mean*1000:.2f} ± {samp_std*1000:.2f} ms | "
+        f"decoding: {dec_mean*1000:.2f} ± {dec_std*1000:.2f} ms | "
+        f"classification: {class_mean*1000:.2f} ± {class_std*1000:.2f} ms | "
+        f"backward: {bwd_mean*1000:.2f} ± {bwd_std*1000:.2f} ms | "
+        f"iters: {n_iter}"
+    )
         
     return global_step
 
