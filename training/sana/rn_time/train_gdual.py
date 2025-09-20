@@ -176,7 +176,7 @@ def do_train_loop(device, solver, optimizer, global_step):
     if config.main_loss == 'clip':
         data = np.load('prompts/mscoco2014_train.npz')['arr_0'].tolist()
         prompts = [d[1] for d in data]
-        pbar = tqdm(range(1000))
+        pbar = tqdm(range(100))
     
     elapsed_times = {'sampling':[], 'decoding':[], 'classification':[], 'backward':[]}
     for _, batch in enumerate(pbar):
