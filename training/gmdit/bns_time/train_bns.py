@@ -125,19 +125,11 @@ class SyntheticDataset(Dataset):
 # ===============================
 train_dataset = SyntheticDataset(1000, config.latent_size)
 print('len(train_dataset) :', len(train_dataset))
-train_loader = DataLoader(
-    train_dataset, batch_size=config.batch_size, shuffle=True,
-    pin_memory=True, num_workers=max(2, os.cpu_count() // 2),
-    persistent_workers=True, drop_last=True
-)
+train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
 
 valid_dataset = SyntheticDataset(100, config.latent_size)
 print('len(valid_dataset) :', len(valid_dataset))
-valid_loader = DataLoader(
-    valid_dataset, batch_size=config.batch_size, shuffle=False,
-    pin_memory=True, num_workers=max(2, os.cpu_count() // 2),
-    persistent_workers=True, drop_last=True
-)
+valid_loader = DataLoader(valid_dataset, batch_size=config.batch_size, shuffle=False)
 
 print('dataloaders ready')
 
@@ -216,9 +208,9 @@ def do_train_loop(device, train_loader, solver, optimizer, global_step):
             break
 
         optimizer.zero_grad(set_to_none=True)
-        noises  = batch['noise'].to(device, non_blocking=True)
+        noises  = batch['noise'].to(device)
         conds   = batch['cond']
-        targets = batch['sample'].to(device, non_blocking=True)        
+        targets = batch['sample'].to(device) 
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
             torch.cuda.synchronize()

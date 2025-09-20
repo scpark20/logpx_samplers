@@ -214,8 +214,8 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
 
         optimizer.zero_grad(set_to_none=True)
         if config.main_loss == 'classifier':
-            noises = torch.randn(config.batch_size, *config.latent_size).to(device, non_blocking=True)
-            conds = torch.randint(0, 1000, size=(len(noises),)).to(device, non_blocking=True)
+            noises = torch.randn(config.batch_size, *config.latent_size).to(device)
+            conds = torch.randint(0, 1000, size=(len(noises),)).to(device)
         
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
