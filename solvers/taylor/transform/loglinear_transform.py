@@ -35,8 +35,7 @@ class LogLinearTransform(Transform):
             k_x = torch.tanh(k_x) * self.kappa_max
             k_e = torch.tanh(k_e) * self.kappa_max
 
-        return {'gamma': gamma, 'tau_x': tau_x, 'tau_e': tau_e,
-        'kappa_x': k_x, 'kappa_e': k_e}
+        return {'gamma': gamma, 'tau_x': tau_x, 'tau_e': tau_e, 'kappa_x': k_x, 'kappa_e': k_e}
 
     def L(self, log_y, y, p, side='x'):
         tau = (p['tau_x'] if side=='x' else p['tau_e'])
