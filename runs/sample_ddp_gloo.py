@@ -135,6 +135,14 @@ def get_solver(config: EasyDict):
     if config.solver == 'Dual-Solver':
         from solvers.taylor.solver.gdual_solver import GDual_Solver
         return GDual_Solver
+        
+    if config.solver == 'Dual-Solver_LogLinear':
+        from functools import partial
+        from solvers.taylor.solver.gdual_solver import GDual_Solver
+        from solvers.taylor.transform.loglinear_transform import LogLinearTransform
+        transform = LogLinearTransform(gamma_push=True, gamma_max=2, kappa_max=2, eps=1e-2)
+        return partial(GDual_Solver, transform=transform)
+
     if config.solver == 'Dual-Solver_Quad' or config.solver == 'Dual-Solver_Legendre':
         from solvers.taylor.solver.gdual_solver_steps_list import GDual_Solver
         return GDual_Solver    
