@@ -8,11 +8,11 @@ STEPS=(9 8 7)
 for s in "${STEPS[@]}"; do
   LOG="logs/sana/ds/s${s}"
 
-  # 이미 로그 디렉토리가 있으면 스킵
-  if [[ -d "$LOG" ]]; then
-    echo ">>> exists: $LOG — skipping"
-    continue
-  fi
+  # # 이미 로그 디렉토리가 있으면 스킵
+  # if [[ -d "$LOG" ]]; then
+  #   echo ">>> exists: $LOG — skipping"
+  #   continue
+  # fi
 
   echo ">>> n_steps=${s} -> ${LOG}"
   mkdir -p "$LOG"
