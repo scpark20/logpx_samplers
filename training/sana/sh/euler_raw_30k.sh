@@ -21,7 +21,7 @@ N_SAMPLES=30000
 SEED_OFFSET=0
 
 SOLVERS=("Euler")
-NFES=(7 8 9)
+NFES=(9 8 7)
 CFGS=(4.5)
 
 # 사용 GPU 개수 -> nproc

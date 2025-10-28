@@ -2,7 +2,7 @@
 set -e
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+export CUDA_VISIBLE_DEVICES=1
 
 # 🔇 torchrun OMP 배너 억제(사전에 지정)
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
@@ -21,7 +21,7 @@ N_SAMPLES=30000
 SEED_OFFSET=0
 
 SOLVERS=("DPM-Solver")
-NFES=(6 5 4 3)
+NFES=(9 8 7 6 5 4 3)
 CFGS=(3.5)
 
 # 사용 GPU 개수 -> nproc
@@ -52,7 +52,7 @@ for solver in "${SOLVERS[@]}"; do
             --seed_offset "$SEED_OFFSET" \
             --batch_size "$BATCH_SIZE" \
             --output_clip_score \
-            --clip_model "ViT-L/14, ViT-L/14@336px"
+            --clip_model "ViT-L/14, ViT-L/14@336px, RN101"
       done
     done
   done

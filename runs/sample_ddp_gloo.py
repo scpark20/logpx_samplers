@@ -45,7 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--output_raw',             action='store_true',  default=False)
     # (기존) parser.add_argument('--clip_model',            type=str,   default='ViT-B/16')
     parser.add_argument('--clip_model', type=str, default='ViT-B/16',
-                        help='CLIP model name or comma-separated list (e.g., "ViT-L/14, ViT-L/14@336px")')
+                        help='CLIP model name or comma-separated list (e.g., "ViT-L/14, ViT-L/14@336px, RN101")')
     parser.add_argument('--output_png', action='store_true', default=False,
                         help='Decode VAE output and save PNGs to save_dir as {gidx:06d}.png')
     parser.add_argument('--build_npz', action='store_true', default=False,
