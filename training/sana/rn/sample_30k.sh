@@ -56,7 +56,8 @@ for solver in "${SOLVERS[@]}"; do
             --seed_offset "$SEED_OFFSET" \
             --batch_size "$BATCH_SIZE" \
             --output_inception \
-            --output_clip_score
+            --output_clip_score \
+            --clip_model "ViT-B/16, ViT-L/14, ViT-L/14@336px, RN101"
       done
     done
   done

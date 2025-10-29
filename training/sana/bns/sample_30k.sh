@@ -21,7 +21,8 @@ N_SAMPLES=30000
 SEED_OFFSET=0
 
 SOLVERS=("BNS-Solver")
-NFES=(6 5 4 3)
+#NFES=(6 5 4 3)
+NFES=(9 8 7)
 CFGS=(4.5)
 
 # 사용 GPU 개수 -> nproc
@@ -56,7 +57,8 @@ for solver in "${SOLVERS[@]}"; do
           --seed_offset "$SEED_OFFSET" \
           --batch_size "$BATCH_SIZE" \
           --output_inception \
-          --output_clip_score
+          --output_clip_score \
+          --clip_model "ViT-B/16, ViT-L/14, ViT-L/14@336px, RN101"
     done
   done
 done
