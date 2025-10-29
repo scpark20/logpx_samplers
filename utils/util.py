@@ -39,6 +39,9 @@ def _choose_by_step(files: dict[int, str], target: int) -> str | None:
     closest = min(files, key=lambda s: abs(s - target))
     return files[closest]
 
+def get_latest_pt(pt_dir):
+    return get_pt(pt_dir, label='latest')    
+
 def get_pt(pt_dir: str, label: str | None = None, step: int | None = None) -> str | None:
     files = _collect_ckpts(pt_dir)
     if not files:

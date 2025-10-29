@@ -116,9 +116,9 @@ scheduler = CosineAnnealingLR(
 print('solver/optimizer')
 
 # ---- Resume (if latest pt exists) ----
-from utils.util import get_pt
+from utils.util import get_latest_pt
 resume_step = 0
-latest = get_pt(config.log_dir, 'latest')
+latest = get_latest_pt(config.log_dir)
 if latest is not None:
     print(f"[RESUME] loading: {latest}")
     ckpt = torch.load(latest, map_location='cpu', weights_only=False)  # state dict은 장치 무관하게 로드 후 사용
