@@ -78,7 +78,7 @@ solver = DS_Solver(noise_schedule,
         config.n_steps,
         skip_type='time_uniform',
         algorithm_type='data_prediction',
-        checkpoint=False).to(device)
+        checkpoint=True).to(device)
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
 
 # ---- Scheduler: Pure Cosine ----
