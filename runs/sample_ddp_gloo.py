@@ -179,6 +179,12 @@ def get_data(config: EasyDict):
         data = np.load('prompts/mscoco2014_valid_30k.npz')['arr_0'].tolist()
         data = [d[1] for d in data]
         return data
+    if config.data == 'MJHQ-30k':
+        import json
+        with open('mjhq_fid/prompts.json', 'r') as f:
+            json_data = json.load(f)
+        data = [json_data[key]['prompt'] for key in json_data]
+        return data
     if config.data == 'ImageNet':
         return [i%1000 for i in range(config.n_samples)]
     raise ValueError(f"Unknown data: {config.data}")
