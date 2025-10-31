@@ -4,7 +4,8 @@ export DPM_TQDM=${DPM_TQDM:-False}
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 
 #STEPS=(6 5 4 3)
-STEPS=(9 8 7)
+#STEPS=(9 8 7)
+STEPS=(7)
 
 for s in "${STEPS[@]}"; do
   
