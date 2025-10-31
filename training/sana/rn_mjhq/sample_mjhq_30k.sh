@@ -9,9 +9,9 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=rn
+TAG=rn_mjhq
 MODEL=SANA
-DATA=MSCOCO2014_valid_30k
+DATA=MJHQ-30k
 BATCH_SIZE=5          # GPU당 배치
 ALGO=dual_prediction
 SKIP=time_uniform_flow
@@ -21,7 +21,7 @@ N_SAMPLES=30000
 SEED_OFFSET=0
 
 SOLVERS=("Dual-Solver")
-NFES=(6 5 4 3)
+NFES=(9 8 7 6 5 4 3)
 CFGS=(4.5)
 
 # 사용 GPU 개수 -> nproc

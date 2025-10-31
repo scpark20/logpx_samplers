@@ -1,0 +1,261 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import os 
+import math
+import argparse
+import numpy as np
+from easydict import EasyDict
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
+
+# ===============================
+# CLI: 요청대로 세 가지만 제어
+# ===============================
+def get_args():
+    p = argparse.ArgumentParser(description="GDual training (only 3 overrides)")
+    p.add_argument('--n_steps',    type=int, default=3)
+    p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
+    return p.parse_args()
+
+args = get_args()
+
+# ===============================
+# Config (원문 유지 + 3가지만 덮어쓰기)
+# ===============================
+config = EasyDict()
+config.backbone      = 'SANA'
+config.batch_size    = 10
+config.n_valid       = 100
+config.CFG           = 4.5
+config.latent_size   = (32, 16, 16)
+
+# LR & Scheduler
+config.base_lr       = 2e-3
+config.end_lr        = 1e-4
+config.total_steps   = 20*1000        # 전체 학습 스텝
+
+# ---- 여기만 CLI로 덮어씀 ----
+config.n_steps       = args.n_steps
+config.log_dir       = args.log_dir or config.log_dir
+# -----------------------------
+
+# Loss
+config.losses = ['cosine', 'clip']
+config.main_loss = 'clip'
+
+os.makedirs(config.log_dir, exist_ok=True)
+
+# ===============================
+# Model (frozen)
+# ===============================
+from backbones.sana import SANA
+from utils.open_clip import OpenCLIPEmbedder
+
+CLIP_MODELS = [
+    ('RN101', 'openai'),  # MSCOCO: 40.25% (Rank 89)
+]
+
+if config.backbone == 'SANA':
+    model = SANA(trainable=True)  # 내부 구현에 맞춰 유지
+    model.set_freeze()
+device = model.device
+print(model)
+
+if 'clip' in config.losses:
+    model_name, pretrained = CLIP_MODELS[0]
+    clip = OpenCLIPEmbedder(
+            model_name=model_name,
+            pretrained=pretrained,
+        ).to(device)
+    
+print('done')
+
+# ===============================
+# Solver / Optimizer / Scheduler
+# ===============================
+from solvers.taylor.solver.gdual_solver import GDual_Solver
+from solvers.taylor.transform.logaffine_transform import LogAffineTransform
+from solvers.taylor.extractor.table_extractor import Extractor
+
+noise_schedule = model.get_noise_schedule()
+extractor = Extractor(steps=config.n_steps)
+transform = LogAffineTransform(gamma_push=True, gamma_max=2, tau_offset=1, kappa_max=2, eps=1e-2)
+solver = GDual_Solver(
+    noise_schedule,
+    steps=config.n_steps,
+    transform=transform,
+    param_extractor=extractor,
+    skip_type="time_uniform_flow",
+    flow_shift=3.0,
+    pred_order=1,
+    corr_order=2,
+    order1_kappa=True,
+    order2_kappa=True,
+    use_corrector=True,
+    time_learning=True,
+    train_mode=True,
+    checkpoint=True
+).to(device)
+
+optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
+
+# ---- Scheduler: Pure Cosine ----
+from torch.optim.lr_scheduler import CosineAnnealingLR
+
+scheduler = CosineAnnealingLR(
+    optimizer,
+    T_max=config.total_steps,   # 전체 스텝에 걸쳐 한 번의 코사인
+    eta_min=config.end_lr
+)
+
+print('solver/optimizer')
+
+# ---- Resume (if latest pt exists) ----
+from utils.util import get_latest_pt
+resume_step = 0
+latest = get_latest_pt(config.log_dir)
+if latest is not None:
+    print(f"[RESUME] loading: {latest}")
+    ckpt = torch.load(latest, map_location='cpu', weights_only=False)  # state dict은 장치 무관하게 로드 후 사용
+    solver.load_state_dict(ckpt["solver_state_dict"])
+    optimizer.load_state_dict(ckpt["optim_state_dict"])
+    resume_step = int(ckpt.get("global_step", 0))
+
+    # 스케줄러 상태가 저장되어 있으면 그대로 복구
+    if "scheduler_state_dict" in ckpt:
+        scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+    else:
+        # 없으면 현재 스텝에 맞춰 1회 동기화 (CosineAnnealingLR은 step(epoch) 지원)
+        if resume_step > 0:
+            scheduler.step(resume_step - 1)
+
+    # 로드 결과 출력 (학습률 확인용)
+    lr_now = optimizer.param_groups[0]["lr"]
+    print(f"[RESUME] global_step={resume_step}, lr={lr_now:.3e}")
+else:
+    print("[RESUME] no checkpoint found; starting from scratch")
+
+# ===============================
+# Utils
+# ===============================
+def abort_if_bad(tag, value, step=None):
+    v = float(value.detach().cpu()) if isinstance(value, torch.Tensor) else float(value)
+    if (not math.isfinite(v)) or (v >= 100.0):
+        msg = f"[EARLY-STOP] {tag} loss={v:.6f}" + (f" @ step {step}" if step is not None else "")
+        print(msg, flush=True)
+        raise RuntimeError(msg)
+
+def save_checkpoint(global_step, save_dir, solver, optimizer):
+    ckpt = {
+        "global_step": int(global_step),
+        "optim_state_dict": optimizer.state_dict(),
+        "solver_state_dict": solver.state_dict(),
+        "config": dict(config),
+    }
+    os.makedirs(save_dir, exist_ok=True)
+    step_path = os.path.join(save_dir, f"step_{global_step:08d}.pt")
+    torch.save(ckpt, step_path)
+    return step_path
+
+
+def get_clip_loss(raw_output, targets):
+    loss = clip.get_clip_loss(raw_output, texts=targets)
+    return loss
+
+@torch.no_grad()
+def get_valid_loss(prompts, device, solver):
+    solver.eval()
+    losses = []
+    for i, prompt in enumerate(prompts):
+        noises = torch.randn(1, *config.latent_size).to(device, non_blocking=True)
+        conds = [prompt]
+        model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
+        with torch.no_grad(), torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+            latent_pred = solver.sample(noises, model_fn)['samples']
+            if 'cosine' in config.losses:
+                sample_pred = model.decode_vae(latent_pred, raw_output=True)['raw_output']
+                loss = clip.get_cossim_loss(sample_pred, conds)
+                losses.append(loss.item())
+
+    return np.mean(losses)
+
+
+def do_train_loop(device, solver, optimizer, global_step):
+    solver.train()
+    if config.main_loss == 'clip':
+        import json
+        with open('mjhq_fid/prompts.json', 'r') as f:
+            json_data = json.load(f)
+        prompts = [json_data[key]['prompt'] for key in json_data]
+        pbar = tqdm(range(1000))
+    
+    for _, batch in enumerate(pbar):
+        if global_step >= config.total_steps:
+            break
+
+        optimizer.zero_grad(set_to_none=True)
+        if config.main_loss == 'clip':
+            noises = torch.randn(config.batch_size, *config.latent_size).to(device, non_blocking=True)
+            indexes = np.random.randint(0, len(prompts), size=(len(noises),))
+            conds = [prompts[index] for index in indexes]
+        print('cond : ', conds[0])
+        model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
+        with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+            latent_pred = solver.sample(noises, model_fn)['samples']
+            if 'clip' == config.main_loss:
+                sample_pred = model.decode_vae(latent_pred, raw_output=True)['raw_output']
+                loss = get_clip_loss(sample_pred, conds)
+                
+        abort_if_bad("train", loss, global_step)  # ← 즉시 중단
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(solver.parameters(), 1.0)
+        optimizer.step()
+        scheduler.step()   # ← lr 업데이트 포인트
+        lr_now = optimizer.param_groups[0]["lr"]
+        pbar.set_postfix({'loss': loss.item(), 'lr': lr_now})
+        global_step += 1
+        
+    return global_step
+
+
+# ===============================
+# Train
+# ===============================
+
+def set_seed(seed=42):
+    import random
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+def main():
+    set_seed()
+    
+    writer = SummaryWriter(config.log_dir)
+    print('tensorboard:', config.log_dir)
+
+    # global_step을 resume 지점부터 시작
+    global_step = resume_step
+    
+    while True:
+        data = np.load('prompts/mscoco2014_valid.npz')['arr_0'].tolist()
+        prompts = [d[1] for d in data][:config.n_valid]
+        loss = get_valid_loss(prompts, device, solver)
+        writer.add_scalar('valid_loss', loss, global_step)
+        save_checkpoint(global_step, config.log_dir, solver, optimizer) 
+
+        if global_step >= config.total_steps:
+            break
+        
+        global_step = do_train_loop(device, solver, optimizer, global_step)
+
+    print('E-N-D')
+    
+if __name__ == "__main__":
+    main()
