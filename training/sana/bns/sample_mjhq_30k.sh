@@ -9,9 +9,9 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=ds
+TAG=bns_mjhq
 MODEL=SANA
-DATA=MSCOCO2014_valid_30k
+DATA=MJHQ-30k
 BATCH_SIZE=5          # GPU당 배치
 ALGO=vector_prediction
 SKIP=time_uniform_flow
@@ -20,8 +20,8 @@ ORDER=2
 N_SAMPLES=30000
 SEED_OFFSET=0
 
-SOLVERS=("DS-Solver_Flow")
-NFES=(9 8 7)
+SOLVERS=("BNS-Solver")
+NFES=(9 8 7 6 5 4 3)
 CFGS=(4.5)
 
 # 사용 GPU 개수 -> nproc
@@ -34,7 +34,7 @@ for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do
     for cfg in "${CFGS[@]}"; do
       SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}"
-      PT_DIR="logs/sana/ds/s${nfe}"
+      PT_DIR="logs/sana/bns/s${nfe}"
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
