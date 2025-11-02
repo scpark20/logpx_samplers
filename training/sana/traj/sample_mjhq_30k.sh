@@ -21,7 +21,7 @@ N_SAMPLES=30000
 SEED_OFFSET=0
 
 SOLVERS=("Dual-Solver")
-NFES=(9)
+NFES=(8 7 6 5 4 3)
 CFGS=(4.5)
 
 # 사용 GPU 개수 -> nproc
