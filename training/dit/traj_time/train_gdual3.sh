@@ -3,7 +3,7 @@ set -euo pipefail
 export DPM_TQDM=${DPM_TQDM:-False}
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 
-STEPS=(9)
+STEPS=(3)
 
 for s in "${STEPS[@]}"; do
   LOG="logs/dit/traj_time/s${s}"

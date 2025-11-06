@@ -38,7 +38,7 @@ config.latent_size   = (4, 32, 32)
 # LR & Scheduler
 config.base_lr       = 2e-3
 config.end_lr        = 1e-4
-config.total_steps   = 20*1000        # 전체 학습 스텝
+config.total_steps   = 5*100        # 전체 학습 스텝
 
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
