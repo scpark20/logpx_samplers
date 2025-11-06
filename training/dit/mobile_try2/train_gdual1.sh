@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export DPM_TQDM=${DPM_TQDM:-False}
-export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-1}
 
-STEPS=(9 8 4)
+STEPS=(3 5 6 7)
 
 for s in "${STEPS[@]}"; do
-  LOG="logs/dit/mobile/s${s}"
+  LOG="logs/dit/mobile_try2/s${s}"
 
   # # 이미 로그 디렉토리가 있으면 스킵
   # if [[ -d "$LOG" ]]; then
@@ -17,7 +17,7 @@ for s in "${STEPS[@]}"; do
   echo ">>> n_steps=${s} -> ${LOG}"
   mkdir -p "$LOG"
 
-  python -m training.dit.mobile.train_gdual \
+  python -m training.dit.mobile_try2.train_gdual \
     --n_steps "$s" \
     --log_dir "$LOG"
 done
