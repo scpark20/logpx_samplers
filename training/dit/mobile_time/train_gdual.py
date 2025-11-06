@@ -14,8 +14,8 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-GMFLOW = os.path.join("submodules", "GMFlow")
-sys.path.insert(0, GMFLOW)
+# GMFLOW = os.path.join("submodules", "GMFlow")
+# sys.path.insert(0, GMFLOW)
 
 # (arch, weight_fullname) — 문자열 그대로 Classifier에 넘겨 사용
 CLASSIFIER_MODELS = [
@@ -38,7 +38,7 @@ args = get_args()
 # Config (원문 유지 + 3가지만 덮어쓰기)
 # ===============================
 config = EasyDict()
-config.backbone      = 'GMDiT'
+config.backbone      = 'DiT'
 config.batch_size    = 10
 config.n_valid       = 100
 config.CFG           = 1.4
@@ -64,11 +64,11 @@ os.makedirs(config.log_dir, exist_ok=True)
 # ===============================
 # Model (frozen)
 # ===============================
-from backbones.gmdit import GMDiT
+from backbones.dit import DiT
 from utils.general_classifier import Classifier
 
-if config.backbone == 'GMDiT':
-    model = GMDiT(trainable=True)  # 내부 구현에 맞춰 유지
+if config.backbone == 'DiT':
+    model = DiT(trainable=True)  # 내부 구현에 맞춰 유지
     model.set_freeze()
 device = model.device
 print(model)
@@ -99,7 +99,7 @@ solver = GDual_Solver(
     steps=config.n_steps,
     transform=transform,
     param_extractor=extractor,
-    skip_type="time_uniform_flow",
+    skip_type="time_uniform",
     flow_shift=1.0,
     pred_order=1,
     corr_order=2,
@@ -211,7 +211,7 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
         e_d0, e_d1 = _evt(), _evt()  # decoding
         e_c0, e_c1 = _evt(), _evt()  # classification (loss fwd)
         e_b0, e_b1 = _evt(), _evt()  # backward (loss.backward + clip + opt.step)
-        
+
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
             # ----- SAMPLING -----
             with record_function("Sampling/solver.sample"):
@@ -242,7 +242,7 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
             torch.nn.utils.clip_grad_norm_(solver.parameters(), 1.0)
             optimizer.step()
             e_b1.record()
-
+        
         scheduler.step()   # ← lr 업데이트 포인트
         lr_now = optimizer.param_groups[0]["lr"]
 
@@ -265,9 +265,8 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
 
     for k in time_list:
         print_stat(time_list[k], k)
-        
-    return global_step
 
+    return global_step
 
 # ===============================
 # Train

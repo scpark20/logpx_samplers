@@ -2,24 +2,24 @@
 set -e
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=0,1
 
 # 🔇 torchrun OMP 배너 억제(사전에 지정)
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=dpm_mjhq
+TAG=ds_mjhq
 MODEL=PixArt-Alpha
 DATA=MJHQ-30k
-BATCH_SIZE=1          # GPU당 배치
+BATCH_SIZE=5          # GPU당 배치
 ALGO=data_prediction
 SKIP=time_uniform
 ORDER=2
 N_SAMPLES=30000
 SEED_OFFSET=0
 
-SOLVERS=("DPM-Solver")
+SOLVERS=("DS-Solver_DDPM")
 NFES=(9 8 7 6 5 4 3)
 CFGS=(3.5)
 
@@ -33,6 +33,7 @@ for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do
     for cfg in "${CFGS[@]}"; do
       SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}"
+      PT_DIR="logs/pixart_alpha/ds/s${nfe}"
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
@@ -47,6 +48,8 @@ for solver in "${SOLVERS[@]}"; do
           --order "$ORDER" \
           --data "$DATA" \
           --save_root "$SAVE_ROOT" \
+          --pt_dir "$PT_DIR" \
+          --pt_criterion "latest" \
           --n_samples "$N_SAMPLES" \
           --seed_offset "$SEED_OFFSET" \
           --batch_size "$BATCH_SIZE" \
