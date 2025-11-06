@@ -137,7 +137,24 @@ else:
 # ===============================
 # Dataset / Dataloader
 # ===============================
-from datasets.pt_dataset import PtDataset
+import os, glob, torch
+from torch.utils.data import Dataset, DataLoader
+
+class PtDataset(Dataset):
+    def __init__(self, pt_dir, n_files=None):
+        self.files = [None for _ in range(1000)]
+
+    def __len__(self):
+        return len(self.files)
+
+    def __getitem__(self, idx):
+        data = {'cond': np.random.randint(1000),
+                'noise': torch.randn(*config.latent_size),
+                'sample': torch.randn(*config.latent_size),
+                'traj': torch.randn(201, *config.latent_size),
+                'timesteps': torch.linspace(1, 1e-3, 201)
+                }
+        return data
 
 train_dataset = PtDataset(config.train_pt_dir)
 print('len(train_dataset) :', len(train_dataset))
