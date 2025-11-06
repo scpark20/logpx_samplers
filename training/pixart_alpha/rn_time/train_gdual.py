@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from operator import truediv
 import os 
 import math
 import argparse
@@ -37,7 +38,7 @@ config.latent_size   = (4, 64, 64)
 # LR & Scheduler
 config.base_lr       = 2e-3
 config.end_lr        = 1e-4
-config.total_steps   = 20*1000        # 전체 학습 스텝
+config.total_steps   = 3*100        # 전체 학습 스텝
 
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
@@ -114,6 +115,31 @@ scheduler = CosineAnnealingLR(
 
 print('solver/optimizer')
 
+# ---- Resume (if latest pt exists) ----
+from utils.util import get_latest_pt
+resume_step = 0
+latest = get_latest_pt(config.log_dir)
+if latest is not None:
+    print(f"[RESUME] loading: {latest}")
+    ckpt = torch.load(latest, map_location='cpu', weights_only=False)  # state dict은 장치 무관하게 로드 후 사용
+    solver.load_state_dict(ckpt["solver_state_dict"])
+    optimizer.load_state_dict(ckpt["optim_state_dict"])
+    resume_step = int(ckpt.get("global_step", 0))
+
+    # 스케줄러 상태가 저장되어 있으면 그대로 복구
+    if "scheduler_state_dict" in ckpt:
+        scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+    else:
+        # 없으면 현재 스텝에 맞춰 1회 동기화 (CosineAnnealingLR은 step(epoch) 지원)
+        if resume_step > 0:
+            scheduler.step(resume_step - 1)
+
+    # 로드 결과 출력 (학습률 확인용)
+    lr_now = optimizer.param_groups[0]["lr"]
+    print(f"[RESUME] global_step={resume_step}, lr={lr_now:.3e}")
+else:
+    print("[RESUME] no checkpoint found; starting from scratch")
+
 # ===============================
 # Utils
 # ===============================
@@ -158,26 +184,29 @@ def get_valid_loss(prompts, device, solver):
 
     return np.mean(losses)
 
-def _trimmed_mean_excl_minmax(values):
-    """Return mean excluding a single min and max. If len<=2, fallback to simple mean."""
-    n = len(values)
-    if n == 0:
-        return float("nan")
-    if n <= 2:
-        return float(sum(values)) / n
-    s = sorted(values)
-    core = s[1:-1]
-    return float(sum(core)) / len(core)    
+from torch.autograd.profiler import record_function    
 
-import time
+def _evt():
+    return torch.cuda.Event(enable_timing=True)
+
+def print_stat(array, label):
+    mean = np.mean(array)
+    std = np.std(array)
+    print(f"{label}: {mean:.2f} ± {std:.2f}")    
+
 def do_train_loop(device, solver, optimizer, global_step):
     solver.train()
     if config.main_loss == 'clip':
         data = np.load('prompts/mscoco2014_train.npz')['arr_0'].tolist()
         prompts = [d[1] for d in data]
         pbar = tqdm(range(100))
+
+    # 지터 줄이려고 첫 반복 전/후 동기화
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+
+    time_list = {'sampling': [], 'decoding': [], 'classification': [], 'backward': []}                
     
-    elapsed_times = {'sampling':[], 'decoding':[], 'classification':[], 'backward':[]}
     for _, batch in enumerate(pbar):
         if global_step >= config.total_steps:
             break
@@ -189,45 +218,65 @@ def do_train_loop(device, solver, optimizer, global_step):
             conds = [prompts[index] for index in indexes]
         
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
+
+        # 이벤트 준비
+        e_s0, e_s1 = _evt(), _evt()  # sampling
+        e_d0, e_d1 = _evt(), _evt()  # decoding
+        e_c0, e_c1 = _evt(), _evt()  # classification (loss fwd)
+        e_b0, e_b1 = _evt(), _evt()  # backward (loss.backward + clip + opt.step)
+
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-            t0 = time.time()
-            latent_pred = solver.sample(noises, model_fn)['samples']
-            elapsed_times['sampling'].append(time.time() - t0)
-            t0 = time.time()
-            
+            # ----- SAMPLING -----
+            with record_function("Sampling/solver.sample"):
+                e_s0.record()
+                latent_pred = solver.sample(noises, model_fn)['samples']
+                e_s1.record()
+                
             if 'clip' == config.main_loss:
-                t0 = time.time()
-                sample_pred = model.decode_vae(latent_pred, raw_output=True)['raw_output']
-                elapsed_times['decoding'].append(time.time() - t0)
-                t0 = time.time()
-                loss = get_clip_loss(sample_pred, conds)
-                elapsed_times['classification'].append(time.time() - t0)
-                t0 = time.time()
+                # ----- DECODING -----
+                with record_function("Decoding/model.decode_vae"):
+                    e_d0.record()
+                    sample_pred = model.decode_vae(latent_pred, raw_output=True)['raw_output']
+                    e_d1.record()
+
+                # ----- CLASSIFICATION (LOSS FORWARD) -----
+                with record_function("Classification/classifier(loss_fwd)"):
+                    e_c0.record()    
+                    loss = get_clip_loss(sample_pred, conds)
+                    e_c1.record()
                 
         abort_if_bad("train", loss, global_step)  # ← 즉시 중단
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(solver.parameters(), 1.0)
-        optimizer.step()
-        elapsed_times['backward'].append(time.time() - t0)
+
+        # ----- BACKWARD (역전파 + 클리핑 + 옵티마이저 스텝) -----
+        with record_function("Backward/backward+clip+step"):
+            e_b0.record()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(solver.parameters(), 1.0)
+            optimizer.step()
+            e_b1.record()
 
         scheduler.step()   # ← lr 업데이트 포인트
         lr_now = optimizer.param_groups[0]["lr"]
+
+        # 이 반복의 모든 커널 완료 대기 → 이벤트 타이밍 안정화
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+
+        # ms 계산
+        t_sampling = e_s0.elapsed_time(e_s1)
+        t_decoding = e_d0.elapsed_time(e_d1)
+        t_class    = e_c0.elapsed_time(e_c1)
+        t_backward = e_b0.elapsed_time(e_b1)
+
+        for k, v in [('sampling',t_sampling), ('decoding',t_decoding),
+                     ('classification',t_class), ('backward',t_backward)]:
+            time_list[k].append(v)
+
         pbar.set_postfix({'loss': loss.item(), 'lr': lr_now})
         global_step += 1
-
-    # ---- 여기서 트리밍 평균 출력 ----
-    samp_avg = _trimmed_mean_excl_minmax(elapsed_times['sampling'])
-    dec_avg  = _trimmed_mean_excl_minmax(elapsed_times['decoding'])
-    class_avg = _trimmed_mean_excl_minmax(elapsed_times['classification'])
-    bwd_avg  = _trimmed_mean_excl_minmax(elapsed_times['backward'])
-    n_iter   = len(elapsed_times['sampling'])
-
-    # 콘솔 출력 (ms)
-    print(f"[TIME] sampling avg (excl min/max): {samp_avg*1000:.2f} ms | "
-          f"decoding avg (excl min/max): {dec_avg*1000:.2f} ms | "
-          f"classification avg (excl min/max): {class_avg*1000:.2f} ms | "
-          f"backward avg (excl min/max): {bwd_avg*1000:.2f} ms | "
-          f"iters: {n_iter}")
+        
+    for k in time_list:
+        print_stat(time_list[k], k)        
         
     return global_step
 
@@ -249,7 +298,9 @@ def main():
     writer = SummaryWriter(config.log_dir)
     print('tensorboard:', config.log_dir)
 
-    global_step = 0
+    # global_step을 resume 지점부터 시작
+    global_step = resume_step
+
     while True:
         data = np.load('prompts/mscoco2014_valid.npz')['arr_0'].tolist()
         prompts = [d[1] for d in data][:config.n_valid]
