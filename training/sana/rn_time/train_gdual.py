@@ -199,7 +199,7 @@ def do_train_loop(device, solver, optimizer, global_step):
     if config.main_loss == 'clip':
         data = np.load('prompts/mscoco2014_train.npz')['arr_0'].tolist()
         prompts = [d[1] for d in data]
-        pbar = tqdm(range(1000))
+        pbar = tqdm(range(100))
 
     # 지터 줄이려고 첫 반복 전/후 동기화
     if torch.cuda.is_available():
