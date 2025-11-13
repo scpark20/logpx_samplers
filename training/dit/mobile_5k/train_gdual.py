@@ -99,7 +99,7 @@ solver = GDual_Solver(
     steps=config.n_steps,
     transform=transform,
     param_extractor=extractor,
-    skip_type="time_uniform_flow",
+    skip_type="time_uniform",
     flow_shift=1.0,
     pred_order=1,
     corr_order=2,
@@ -177,7 +177,7 @@ def get_valid_loss(valid_noises, valid_conds, device, solver):
 
 def do_train_loop(device, writer, solver, optimizer, global_step):
     solver.train()
-    pbar = tqdm(range(100))
+    pbar = tqdm(range(1000))
     
     for _, batch in enumerate(pbar):
         if global_step >= config.total_steps:

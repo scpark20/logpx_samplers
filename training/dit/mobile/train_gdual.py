@@ -177,7 +177,7 @@ def get_valid_loss(valid_noises, valid_conds, device, solver):
 
 def do_train_loop(device, writer, solver, optimizer, global_step):
     solver.train()
-    pbar = tqdm(range(100))
+    pbar = tqdm(range(1000))
     
     for _, batch in enumerate(pbar):
         if global_step >= config.total_steps:
