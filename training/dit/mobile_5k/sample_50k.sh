@@ -9,7 +9,7 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=mobile
+TAG=mobile_5k
 MODEL=DiT
 DATA=ImageNet
 BATCH_SIZE=10          # GPU당 배치
@@ -21,8 +21,7 @@ N_SAMPLES=50000
 SEED_OFFSET=0
 
 SOLVERS=("Dual-Solver")
-#NFES=(9 7 5 3)
-NFES=(8 6 4)
+NFES=(19 17 15 13 11)
 CFGS=(1.5)
 
 # 사용 GPU 개수 -> nproc
@@ -35,7 +34,7 @@ for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do
     for cfg in "${CFGS[@]}"; do
       SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}"
-      PT_DIR="logs/dit/mobile/s${nfe}"
+      PT_DIR="logs/dit/mobile_5k/s${nfe}"
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \

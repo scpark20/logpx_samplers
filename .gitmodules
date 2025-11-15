@@ -1,3 +1,6 @@
 [submodule "submodules/GMFlow"]
 	path = submodules/GMFlow
 	url = https://github.com/Lakonik/GMFlow
+[submodule "submodules/PerceptualSimilarity"]
+	path = submodules/PerceptualSimilarity
+	url = https://github.com/richzhang/PerceptualSimilarity.git
