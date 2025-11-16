@@ -40,7 +40,6 @@ CLASSIFIER_MODELS = [
   ("alexnet",           "AlexNet_Weights.IMAGENET1K_V1"),                      # Rank: 114, Acc@5: 79.066, GFLOPS: 0.71
 ]
 
-
 # ===============================
 # CLI: 요청대로 세 가지만 제어
 # ===============================
@@ -188,7 +187,6 @@ def get_valid_loss(valid_noises, valid_conds, device, solver):
                 losses.append(loss.item())
 
     return np.mean(losses)
-
 
 def do_train_loop(device, writer, solver, optimizer, global_step):
     solver.train()

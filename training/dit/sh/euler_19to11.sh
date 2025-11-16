@@ -9,19 +9,19 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=lpips_vgg
+TAG=euler
 MODEL=DiT
 DATA=ImageNet
 BATCH_SIZE=5          # GPU당 배치
-ALGO=dual_prediction
+ALGO=data_prediction
 SKIP=time_uniform
-ORDER=2
+FLOW_SHIFT=1.0
+ORDER=1
 N_SAMPLES=50000
 SEED_OFFSET=0
 
-SOLVERS=("Dual-Solver")
-NFES=(9 7 5 3)
-#NFES=(6 4)
+SOLVERS=("Euler")
+NFES=(19 17 15 13 11)
 CFGS=(1.5)
 
 # 사용 GPU 개수 -> nproc
@@ -34,7 +34,6 @@ for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do
     for cfg in "${CFGS[@]}"; do
       SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}"
-      PT_DIR="logs/dit/traj/s${nfe}"
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
@@ -44,13 +43,12 @@ for solver in "${SOLVERS[@]}"; do
           --solver "$solver" \
           --algorithm_type "$ALGO" \
           --skip_type "$SKIP" \
+          --flow_shift "$FLOW_SHIFT" \
           --NFE "$nfe" \
           --CFG "$cfg" \
           --order "$ORDER" \
           --data "$DATA" \
           --save_root "$SAVE_ROOT" \
-          --pt_dir "$PT_DIR" \
-          --pt_criterion "latest" \
           --n_samples "$N_SAMPLES" \
           --seed_offset "$SEED_OFFSET" \
           --batch_size "$BATCH_SIZE" \
