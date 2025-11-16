@@ -194,8 +194,8 @@ def cross_entropy_between_logits(logits_s, logits_t, T=1.0):
     return ce * (T * T)
 
 def LOGIT_LOSS(pred, trgt, decoder):
-    logit_pred = classifier(decoder(pred))
-    logit_trgt = classifier(decoder(trgt))
+    logit_pred = classifier(decoder(pred))['logits']
+    logit_trgt = classifier(decoder(trgt))['logits']
     loss = cross_entropy_between_logits(logit_pred, logit_trgt)
     return loss
 
