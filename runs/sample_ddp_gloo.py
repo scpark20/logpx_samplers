@@ -86,6 +86,13 @@ def build_npz_from_pngs(png_dir: Path, out_npz: Path, n: int):
 def get_model(config: EasyDict):
     dt = resolve_dtype(config.dtype)
 
+    if config.model == 'SD':
+        from backbones.stable_diffusion import StableDiffusion
+        try:
+            return StableDiffusion(model_id=config.model_id, dtype=dt) if config.model_id is not None else StableDiffusion(dtype=dt)
+        except TypeError:
+            return StableDiffusion(model_id=config.model_id) if config.model_id is not None else StableDiffusion()
+
     if config.model == 'SANA':
         from backbones.sana import SANA
         try:

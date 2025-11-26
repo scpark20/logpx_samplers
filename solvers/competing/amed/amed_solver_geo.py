@@ -44,7 +44,7 @@ class AMED_Solver(Solver):
         steps,
         skip_type="time_uniform",
         flow_shift=1.0,
-        algorithm_type="dual_prediction",
+        algorithm_type="noise_prediction",
         bottleneck_dim=1024,
         checkpoint=False,
         use_afs=True,
@@ -62,12 +62,20 @@ class AMED_Solver(Solver):
         t_T = noise_schedule.T
         self.timesteps = self.get_time_steps(skip_type=skip_type, t_T=t_T, t_0=t_0, N=steps, device='cpu', shift=flow_shift)
         self.predictor = AMED_predictor(sampler_stu='amed', sampler_tea='euler', bottleneck_input_dim=bottleneck_dim)
+        self.r = nn.Parameter(torch.zeros(1,))
+        self.scale_dir = nn.Parameter(torch.zeros(1,))
+        self.scale_time = nn.Parameter(torch.zeros(1,))
 
-    def eval_model(self, y, rho):
+    def eval_model(self, y, rho, backbone):
         t = self.noise_schedule.inverse_rho(rho)
         alpha = self.noise_schedule.marginal_alpha(t)
         x = y * alpha[:, None, None, None]
-        return self.checkpoint_model_fn(x, t) if self.checkpoint else self.model_fn(x, t)
+
+        backbone.register_hook()
+        model_output = self.checkpoint_model_fn(x, t) if self.checkpoint else self.model_fn(x, t)
+        bottleneck_output = backbone.unet_enc_out[0]
+        backbone.clear_hook() 
+        return model_output, bottleneck_output
 
     def get_x(self, y, rho):
         t = self.noise_schedule.inverse_rho(rho)
@@ -90,23 +98,23 @@ class AMED_Solver(Solver):
         trajs = [x,]
         for i in range(self.steps):
             if self.use_afs and i == 0:
-                data, noise = torch.zeros_like(x), y / ((1 + rhos[i]**2).sqrt())
+                noise, bottleneck = torch.zeros_like(x), y / ((1 + rhos[i]**2).sqrt()), None
             else:
-                data, noise = self.eval_model(y, rhos[i])
-                
+                noise, bottleneck = self.eval_model(y, rhos[i], kwargs['backbone'])
+
             # Mid
-            r, scale_dir, scale_time = get_amed_prediction(self.predictor, rhos[i], rhos[i+1], torch.zeros_like(y))
-            r = 0.5
-            scale_dir = 1.0
-            scale_time = 1.0
+            r, scale_dir, scale_time = get_amed_prediction(self.predictor, rhos[i], rhos[i+1], bottleneck[len(bottleneck)//2:])
+            # r = torch.sigmoid(self.r)
+            # scale_dir = torch.exp(self.scale_dir)
+            # scale_time = torch.exp(self.scale_time)
+        
             rho_mid = (rhos[i+1]**r) * (rhos[i]**(1-r))
             #rho_mid = (rhos[i+1]*r) + (rhos[i]*(1-r))
-            #print(y.shape, rho_mid.shape, rhos[i].shape, noise.shape)
             y_next = y + (rho_mid - rhos[i:i+1])[:, None, None, None] * noise
-            _, noise = self.eval_model(y_next, scale_time * rho_mid)
+            noise, _ = self.eval_model(y_next, scale_time * rho_mid, kwargs['backbone'])
 
             # Final
-            y = y + (scale_dir * (rhos[i+1:i+2] - rhos[i:i+1]))[:, None, None, None] * noise
+            y = y + scale_dir[:, None, None, None] * (rhos[i+1:i+2] - rhos[i:i+1])[:, None, None, None] * noise
             x = self.get_x(y, rhos[i+1])
             trajs.append(x)
         
