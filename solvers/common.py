@@ -166,66 +166,63 @@ class NoiseScheduleVP:
             ).reshape(-1)
         elif self.schedule == "linear":
             return -0.25 * t**2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
-    
-    # def marginal_log_mean_coeff(self, t):
-    #     """
-    #     Compute log(alpha_t) of a given continuous-time label t in [0, T].
-    #     """
-    #     if self.schedule == "discrete":
-    #         return interpolate_fn(
-    #             t.reshape((-1, 1)), self.t_array.to(t.device), self.log_alpha_array.to(t.device)
-    #         ).reshape(-1)
-    #     elif self.schedule == "linear":
-    #         return -0.25 * t**2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
-
-    
-    # def beta(self, t: torch.Tensor) -> torch.Tensor:
-    #     """
-    #     Autograd-friendly β(t) = -2 * d/dt log α(t).
-    #     Piecewise-linear log α(t) → d/dt is piecewise-constant.
-    #     """
-    #     t = t.clone().requires_grad_(True)
-    #     loga = self.marginal_log_mean_coeff(t)              # diff'able w.r.t. t
-    #     (dloga_dt,) = torch.autograd.grad(
-    #         loga, t,
-    #         grad_outputs=torch.ones_like(loga),
-    #         create_graph=True, retain_graph=True
-    #     )
-    #     return (-2.0 * dloga_dt)
-
-    # def dlog_alpha(self, t):
-    #     return -0.5*self.beta(t)
-
-    # def dalpha(self, t):
-    #     return self.marginal_alpha(t) * self.dlog_alpha(t)
-
-    # def dsigma(self, t: torch.Tensor) -> torch.Tensor:
-    #     t = t.clone().requires_grad_(True)
-    #     loga = self.marginal_log_mean_coeff(t)
-    #     (dloga_dt,) = torch.autograd.grad(
-    #         outputs=loga, inputs=t,
-    #         grad_outputs=torch.ones_like(loga),
-    #         create_graph=True, retain_graph=True
-    #     )
-    #     alpha = torch.exp(loga)
-    #     sigma = torch.sqrt(torch.clamp(1.0 - torch.exp(2*loga), min=0.0))
-    #     return - (alpha**2 / torch.clamp(sigma, min=1e-12)) * dloga_dt
-
-    def dalpha(self, t, k=1.):
-        dt = (t[1:] - t[:-1]) * k
-        num = self.marginal_alpha(t[:-1] + dt) - self.marginal_alpha(t[:-1])
-        return num / dt
-
-    def dsigma(self, t, k=1.):
-        dt = (t[1:] - t[:-1]) * k
-        num = self.marginal_std(t[:-1] + dt) - self.marginal_std(t[:-1])
-        return num / dt
 
     def marginal_alpha(self, t):
         """
         Compute alpha_t of a given continuous-time label t in [0, T].
         """
         return torch.exp(self.marginal_log_mean_coeff(t))
+
+    def inverse_alpha(self, alpha):
+        """
+        Invert alpha(t) -> t.
+
+        - VP, discrete: use piecewise-linear inverse over log_alpha_array vs t_array.
+        Implemented in fp32 for stability, then cast back.
+        - VP, linear: solve closed-form from log alpha(t) = -0.25 t^2 (β1-β0) - 0.5 t β0.
+        """
+        if self.schedule == "discrete":
+            # fp32 for numerical stability
+            a_f = alpha.to(torch.float32)
+
+            # alpha(t) in (0,1]; clamp to avoid log(0) / out-of-domain
+            a_f = a_f.clamp(min=1e-12, max=1.0)
+            log_a = torch.log(a_f)  # <= 0
+
+            # log_alpha_array and t_array are shape (1, N), decreasing w.r.t. t
+            # flip along dim=1 so xp is increasing for interpolate_fn
+            xp = torch.flip(self.log_alpha_array.to(log_a.device, torch.float32), [1])
+            yp = torch.flip(self.t_array.to(log_a.device, torch.float32), [1])
+
+            # differentiable piecewise-linear inverse
+            t_f = interpolate_fn(
+                log_a.reshape((-1, 1)),
+                xp,
+                yp,
+            ).reshape(-1)
+
+            # keep within valid time range
+            t_f = t_f.clamp(min=1.0 / self.total_N, max=self.T)
+            return t_f.to(alpha.dtype)
+
+        elif self.schedule == "linear":
+            a_f = alpha.to(torch.float32).clamp(min=1e-12, max=1.0)
+            loga = torch.log(a_f)  # log alpha
+
+            # log alpha(t) = -0.25(β1-β0) t^2 - 0.5 β0 t
+            A = 0.25 * (self.beta_1 - self.beta_0)
+            B = 0.5 * self.beta_0
+            C = loga
+
+            # Solve A t^2 + B t + C = 0 for t >= 0
+            disc = (B * B - 4.0 * A * C).clamp(min=0.0)
+            t_f = (-B + torch.sqrt(disc)) / (2.0 * A)
+            t_f = t_f.clamp(min=0.0, max=self.T)
+            return t_f.to(alpha.dtype)
+
+        else:
+            raise ValueError(f"Unsupported schedule {self.schedule}")
+
 
     def marginal_std(self, t):
         """
@@ -241,27 +238,67 @@ class NoiseScheduleVP:
         log_std = 0.5 * torch.log(1.0 - torch.exp(2.0 * log_mean_coeff))
         return log_mean_coeff - log_std
 
-    def marginal_rho(self, t):
-        return 1. / self.marginal_lambda(t).exp()
-
     def inverse_lambda(self, lamb):
         """
         Compute the continuous-time label t in [0, T] of a given half-logSNR lambda_t.
         """
+        lamb_f = lamb.to(dtype=torch.float32)
         if self.schedule == "linear":
             tmp = 2.0 * (self.beta_1 - self.beta_0) * torch.logaddexp(-2.0 * lamb, torch.zeros((1,)).to(lamb))
             Delta = self.beta_0**2 + tmp
             return tmp / (torch.sqrt(Delta) + self.beta_0) / (self.beta_1 - self.beta_0)
         elif self.schedule == "discrete":
-            log_alpha = -0.5 * torch.logaddexp(torch.zeros((1,)).to(lamb.device), -2.0 * lamb)
+            log_alpha = -0.5 * torch.logaddexp(
+                torch.zeros((1,), device=lamb_f.device, dtype=torch.float32),
+                -2.0 * lamb_f
+            )
             t = interpolate_fn(
                 log_alpha.reshape((-1, 1)),
-                torch.flip(self.log_alpha_array.to(lamb.device), [1]),
-                torch.flip(self.t_array.to(lamb.device), [1]),
+                torch.flip(self.log_alpha_array.to(lamb_f.device, torch.float32), [1]),
+                torch.flip(self.t_array.to(lamb_f.device, torch.float32), [1]),
             )
-            return t.reshape((-1,))
+            return t.reshape((-1,)).to(lamb.dtype)
 
+    def marginal_rho(self, t):
+        """
+        Compute rho(t) without using marginal_lambda.
 
+        For VP schedules:
+            lambda(t) = log(alpha(t)) - log(sigma(t))
+            rho(t) = exp(-lambda(t)) = sigma(t) / alpha(t)
+        """
+        # alpha, sigma are already differentiable w.r.t. t
+        alpha_t = self.marginal_alpha(t)
+        sigma_t = self.marginal_std(t)
+
+        # numerical safety: alpha can be extremely small near t=T
+        alpha_t = alpha_t.clamp(min=1e-12)
+
+        return sigma_t / alpha_t
+
+    def inverse_rho(self, rho):
+        """
+        Invert rho(t) = sigma(t)/alpha(t) -> t without using lambda.
+
+        Using identity alpha^2 + sigma^2 = 1:
+            rho = sigma/alpha
+            => alpha = 1 / sqrt(1 + rho^2)
+            => t = inverse_alpha(alpha)
+        """
+        rho_f = rho.to(torch.float32)
+
+        # rho >= 0 theoretically; clamp for numerical safety
+        rho_f = rho_f.clamp(min=0.0)
+
+        alpha = 1.0 / torch.sqrt(1.0 + rho_f * rho_f)
+
+        # avoid log(0) inside inverse_alpha
+        alpha = alpha.clamp(min=1e-12, max=1.0)
+
+        t_f = self.inverse_alpha(alpha)  # piecewise-linear, differentiable a.e.
+        return t_f.to(rho.dtype)
+
+    
 class NoiseScheduleFlow:
     def __init__(
         self,
@@ -285,6 +322,14 @@ class NoiseScheduleFlow:
         """
         return 1 - t
 
+    def inverse_alpha(self, alpha):
+        """
+        Flow: alpha(t)=1-t  ->  t=1-alpha
+        """
+        a_f = alpha.to(torch.float32).clamp(min=0.0, max=1.0)
+        t_f = 1.0 - a_f
+        return t_f.to(alpha.dtype).clamp(min=0.0, max=self.T)
+
     @staticmethod
     def marginal_std(t):
         """
@@ -301,7 +346,26 @@ class NoiseScheduleFlow:
         return log_mean_coeff - log_std
 
     def marginal_rho(self, t):
-        return 1. / self.marginal_lambda(t).exp()
+        """
+        Flow schedule rho(t) = std(t) / alpha(t).
+
+        alpha(t)=1-t, std(t)=t  =>  rho(t)= t/(1-t)
+        """
+        t_f = t.to(torch.float32)
+        denom = (1.0 - t_f).clamp(min=1e-12)  # avoid divide-by-zero at t=1
+        rho_f = t_f / denom
+        return rho_f.to(t.dtype)
+
+    def inverse_rho(self, rho):
+        """
+        Invert rho(t) -> t for Flow schedule.
+
+        alpha=1-t, std=t, so rho = std/alpha = t/(1-t)
+        => t = rho/(1+rho)
+        """
+        rho_f = rho.to(torch.float32).clamp(min=0.0)
+        t_f = rho_f / (1.0 + rho_f)
+        return t_f.to(rho.dtype).clamp(min=0.0, max=self.T)
 
     @staticmethod
     def inverse_lambda(lamb):

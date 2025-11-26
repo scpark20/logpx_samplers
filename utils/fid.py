@@ -9,7 +9,8 @@ class FIDInception(nn.Module):
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.net = InceptionV3([InceptionV3.BLOCK_INDEX_BY_DIM[dims]],
-                                normalize_input=normalize_input
+                                resize_input=resize_input,
+                                normalize_input=normalize_input,
                                 ).eval().to(device=device, dtype=net_dtype)
         for p in self.net.parameters(): p.requires_grad_(False)
         self.transform = TF.ToTensor()

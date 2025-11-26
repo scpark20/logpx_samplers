@@ -33,6 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--pt_step',          type=str,   default=None)
     parser.add_argument('--n_samples',       type=int,   default=100)
     parser.add_argument('--batch_size',      type=int,   default=5)
+    parser.add_argument('--bottleneck_dim',  type=int,   default=1024)
     parser.add_argument('--output_noise',    action='store_true',  default=False)
     parser.add_argument('--output_traj',     action='store_true',  default=False)
     parser.add_argument('--output_preds',     action='store_true',  default=False)
@@ -161,6 +162,18 @@ def get_solver(config: EasyDict):
     if config.solver == 'DS-Solver_Flow':
         from solvers.competing.ds.ds_solver_flow import DS_Solver
         return DS_Solver
+    if config.solver == 'EPD-Solver_ARI':
+        from solvers.competing.epd.epd_solver_arithmetic import EPD_Solver
+        return EPD_Solver
+    if config.solver == 'EPD-Solver_GEO':
+        from solvers.competing.epd.epd_solver_geometric import EPD_Solver
+        return EPD_Solver
+    if config.solver == 'AMED-Solver_GEO':
+        from solvers.competing.amed.amed_solver_geo import AMED_Solver
+        return AMED_Solver
+    if config.solver == 'AMED-Solver_ARI':
+        from solvers.competing.amed.amed_solver_ari import AMED_Solver
+        return AMED_Solver
     if config.solver == 'DDPM-Solver':
         from solvers.others.ddpm_solver import DDPM_Solver
         return DDPM_Solver
@@ -306,7 +319,7 @@ def main():
             model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)#, cfg_channels=config.cfg_channels)
             noises = model.get_noise(seeds=seeds)
             solver = Solver(noise_schedule, steps=config.NFE, order=config.order,
-                            skip_type=config.skip_type, flow_shift=config.flow_shift,
+                            skip_type=config.skip_type, flow_shift=config.flow_shift, bottleneck_dim=config.bottleneck_dim,
                             algorithm_type=config.algorithm_type, k=config.k, solver=config.solver).to(device)
             if config.pt_dir is not None:
                 from utils.util import get_pt

@@ -51,7 +51,14 @@ class Solver(nn.Module):
 
 
     def set_model_fn(self, model_fn):
-        self.model = lambda x, t: model_fn(x, t.expand(x.shape[0]))
+        def model_wrapper(x, t):
+            # t is scalar or 1-length or [batch,]
+            assert len(t.shape) == 0 or len(t) == 1 or len(t) == len(x)
+            if len(t.shape) == 0 or len(t) == 1:
+                t = t.expand(x.shape[0])
+            #print(x.shape, t.shape)
+            return model_fn(x, t)
+        self.model = model_wrapper
 
     def dynamic_thresholding_fn(self, x0, t):
         """
@@ -66,7 +73,8 @@ class Solver(nn.Module):
 
     def checkpoint_model_fn(self, x, t):
         with save_on_cpu(pin_memory=True):
-            y = checkpoint(self.model_fn, x, t, use_reentrant=False)
+            #y = checkpoint(self.model_fn, x, t, use_reentrant=False)
+            y = checkpoint(self.model_fn, x, t, use_reentrant=True)
         return y
     
     def model_fn(self, x, t):
@@ -91,7 +99,7 @@ class Solver(nn.Module):
             noise = self.model(x, t)
             alpha_t = self.noise_schedule.marginal_alpha(t)
             sigma_t = self.noise_schedule.marginal_std(t)
-            x0 = (x - sigma_t * noise) / alpha_t
+            x0 = (x - sigma_t[:, None, None, None] * noise) / alpha_t[:, None, None, None]
             if self.correcting_x0_fn is not None:
                 x0 = self.correcting_x0_fn(x0, t)
             if x0.dtype != noise.dtype:
@@ -138,7 +146,33 @@ class Solver(nn.Module):
             sigmas = 1.0 - betas
             sigmas = (shift * sigmas / (1 + (shift - 1) * sigmas)).flip(dims=[0])
             return sigmas
+        elif skip_type == "edm":
+            # EDM-like polynomial schedule in rho(t) = sigma(t)/alpha(t).
+            # Step 1: t_T, t_0 -> rho_T, rho_0
+            t_T = min(1.0 - 1e-3, t_T)
+            t_0 = max(1e-3, t_0)
+            t_T_tensor = torch.as_tensor(t_T, device=device)
+            t_0_tensor = torch.as_tensor(t_0, device=device)
+
+            rho_T = self.noise_schedule.marginal_rho(t_T_tensor)  # scalar tensor
+            rho_0 = self.noise_schedule.marginal_rho(t_0_tensor)
+
+            # Step 2: polynomial interpolation in rho-space (EDM style)
+            # rho_i = (rho_T^(1/r) + s_i * (rho_0^(1/r) - rho_T^(1/r)))^r
+            # 보통 r ≈ 7 사용
+            r = 7.0
+            rho_T_r = rho_T.pow(1.0 / r)
+            rho_0_r = rho_0.pow(1.0 / r)
+
+            s = torch.linspace(0.0, 1.0, N + 1, device=device, dtype=rho_T.dtype)
+            rho_steps = (rho_T_r + s * (rho_0_r - rho_T_r)).pow(r)
+
+            # Step 3: rho_i -> t_i via inverse_rho
+            ts = self.noise_schedule.inverse_rho(rho_steps)
+            return ts
+
         else:
             raise ValueError(
-                f"Unsupported skip_type {skip_type}, need to be 'logSNR' or 'time_uniform' or 'time_quadratic'"
+                f"Unsupported skip_type {skip_type}, need to be 'logSNR', "
+                f"'time_uniform', 'time_quadratic', 'time_uniform_flow' or 'EDM'"
             )

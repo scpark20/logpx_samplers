@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os, sys
+import os 
 import math
 import argparse
 import numpy as np
@@ -14,21 +14,12 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-# GMFLOW = os.path.join("submodules", "GMFlow")
-# sys.path.insert(0, GMFLOW)
-
-# (arch, weight_fullname) — 문자열 그대로 Classifier에 넘겨 사용
-CLASSIFIER_MODELS = [
-  ("mobilenet_v3_large","MobileNet_V3_Large_Weights.IMAGENET1K_V2"),           # Rank: 84,  Acc@5: 92.566, GFLOPS: 0.22, FID : 9.44
-]
-
 # ===============================
 # CLI: 요청대로 세 가지만 제어
 # ===============================
 def get_args():
-    p = argparse.ArgumentParser(description="GDual training (only 3 overrides)")
+    p = argparse.ArgumentParser(description="AMED_GEO training (only 3 overrides)")
     p.add_argument('--n_steps',    type=int, default=3)
-    p.add_argument('--n_classifiers',    type=int, default=1)
     p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
     return p.parse_args()
 
@@ -41,23 +32,25 @@ config = EasyDict()
 config.backbone      = 'DiT'
 config.batch_size    = 10
 config.n_valid       = 100
-config.CFG           = 1.4
+config.CFG           = 1.5
 config.latent_size   = (4, 32, 32)
 
 # LR & Scheduler
 config.base_lr       = 2e-3
 config.end_lr        = 1e-4
-config.total_steps   = 20*1000        # 전체 학습 스텝
+config.total_steps   = 10*1000        # 전체 학습 스텝
 
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
 config.log_dir       = args.log_dir or config.log_dir
-config.n_classifiers = args.n_classifiers
+config.train_pt_dir  = '/dataset/dit/train1.5_1k_traj'
+config.valid_pt_dir  = '/dataset/dit/valid1.5_100'
 # -----------------------------
 
 # Loss
-config.losses = ['classifier']
-config.main_loss = 'classifier'
+config.classifier = EasyDict()
+config.valid_losses = ['mse_loss']
+config.main_loss = 'traj_loss'
 
 os.makedirs(config.log_dir, exist_ok=True)
 
@@ -65,52 +58,30 @@ os.makedirs(config.log_dir, exist_ok=True)
 # Model (frozen)
 # ===============================
 from backbones.dit import DiT
-from utils.general_classifier import Classifier
 
 if config.backbone == 'DiT':
     model = DiT(trainable=True)  # 내부 구현에 맞춰 유지
     model.set_freeze()
 device = model.device
 print(model)
-
-if 'classifier' in config.losses:
-    classifiers = []
-    for arch, weights in CLASSIFIER_MODELS[:config.n_classifiers]:
-        classifier = Classifier(
-                arch=arch,
-                weights=weights,
-            ).to(device)
-        classifiers.append(classifier)
-    
 print('done')
 
 # ===============================
 # Solver / Optimizer / Scheduler
 # ===============================
-from solvers.taylor.solver.gdual_solver import GDual_Solver
-from solvers.taylor.transform.logaffine_transform import LogAffineTransform
-from solvers.taylor.extractor.table_extractor import Extractor
+from solvers.competing.amed.amed_solver_geo import AMED_Solver
 
 noise_schedule = model.get_noise_schedule()
-extractor = Extractor(steps=config.n_steps)
-transform = LogAffineTransform(gamma_push=True, gamma_max=2, tau_offset=1, kappa_max=2, eps=1e-2)
-solver = GDual_Solver(
+solver = AMED_Solver(
     noise_schedule,
     steps=config.n_steps,
-    transform=transform,
-    param_extractor=extractor,
     skip_type="time_uniform_flow",
     flow_shift=1.0,
-    pred_order=1,
-    corr_order=2,
-    order1_kappa=True,
-    order2_kappa=True,
-    use_corrector=True,
-    time_learning=True,
-    train_mode=True,
-    checkpoint=True
+    algorithm_type="dual_prediction",
+    bottleneck_dim=1024,
+    checkpoint=True,
+    use_afs=True,
 ).to(device)
-
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
 
 # ---- Scheduler: Pure Cosine ----
@@ -123,6 +94,48 @@ scheduler = CosineAnnealingLR(
 )
 
 print('solver/optimizer')
+
+# ---- Resume (if latest pt exists) ----
+from utils.util import get_latest_pt
+resume_step = 0
+latest = get_latest_pt(config.log_dir)
+if latest is not None:
+    print(f"[RESUME] loading: {latest}")
+    ckpt = torch.load(latest, map_location='cpu', weights_only=False)  # state dict은 장치 무관하게 로드 후 사용
+    solver.load_state_dict(ckpt["solver_state_dict"])
+    optimizer.load_state_dict(ckpt["optim_state_dict"])
+    resume_step = int(ckpt.get("global_step", 0))
+
+    # 스케줄러 상태가 저장되어 있으면 그대로 복구
+    if "scheduler_state_dict" in ckpt:
+        scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+    else:
+        # 없으면 현재 스텝에 맞춰 1회 동기화 (CosineAnnealingLR은 step(epoch) 지원)
+        if resume_step > 0:
+            scheduler.step(resume_step - 1)
+
+    # 로드 결과 출력 (학습률 확인용)
+    lr_now = optimizer.param_groups[0]["lr"]
+    print(f"[RESUME] global_step={resume_step}, lr={lr_now:.3e}")
+else:
+    print("[RESUME] no checkpoint found; starting from scratch")
+
+
+# ===============================
+# Dataset / Dataloader
+# ===============================
+from datasets.pt_dataset import PtDataset
+
+train_dataset = PtDataset(config.train_pt_dir)
+print('len(train_dataset) :', len(train_dataset))
+train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True)
+
+
+valid_dataset = PtDataset(config.valid_pt_dir)
+print('len(valid_dataset) :', len(valid_dataset))
+valid_loader = DataLoader(valid_dataset, batch_size=config.batch_size, shuffle=False)
+
+print('dataloaders ready')
 
 # ===============================
 # Utils
@@ -146,97 +159,81 @@ def save_checkpoint(global_step, save_dir, solver, optimizer):
     torch.save(ckpt, step_path)
     return step_path
 
-
-def get_classifier_loss(raw_output, targets):
-    loss_list = []
-    for classifier in classifiers:
-        loss = classifier(raw_output, targets=targets)['loss']
-        loss_list.append(loss)
-    return torch.mean(torch.stack(loss_list))
-
 @torch.no_grad()
-def get_valid_loss(valid_noises, valid_conds, device, solver):
+def get_valid_loss(valid_loader, device, solver):
     solver.eval()
     losses = []
-    start = 0
-    while True:
-        if start >= len(valid_noises):
-            break
-        noises = valid_noises[start:min(start+config.batch_size, len(valid_noises))]
-        conds = valid_conds[start:min(start+config.batch_size, len(valid_noises))]
-        start += config.batch_size
+    for batch in valid_loader:
+        noises  = batch['noise'].to(device, non_blocking=True)
+        conds   = batch['cond']
+        targets = batch['sample'].to(device, non_blocking=True)
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
-        with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+        with torch.no_grad():
             latent_pred = solver.sample(noises, model_fn)['samples']
-            if 'classifier' in config.losses:
-                outputs = model.decode_vae(latent_pred, raw_output=True)
-                loss = get_classifier_loss(outputs['raw_output'], targets=conds)
-                losses.append(loss.item())
-
+            loss = torch.log(F.mse_loss(latent_pred, targets))
+            losses.append(loss.item())
     return np.mean(losses)
 
-def do_train_loop(device, writer, solver, optimizer, global_step):
+def interp_traj(X, t, s):
+    # X:(B,L,C,H,W), t,s: (L,),(M,) — 둘 다 내림차순(1→0) 가정
+    t, s = t.to(X.device), s.to(X.device)
+    i1 = torch.bucketize(-s, -t).clamp(1, t.numel()-1); i0 = i1 - 1
+    w  = ((s - t[i0]) / (t[i1] - t[i0])).to(X.dtype).view(1, -1, 1, 1, 1)
+    return torch.lerp(X[:, i0], X[:, i1], w)
+
+def do_train_loop(device, train_loader, solver, optimizer, global_step):
     solver.train()
-    pbar = tqdm(range(1000))
+    pbar = tqdm(train_loader)
     
-    for _, batch in enumerate(pbar):
+    for batch in pbar:
         if global_step >= config.total_steps:
             break
 
         optimizer.zero_grad(set_to_none=True)
-        if config.main_loss == 'classifier':
-            noises = torch.randn(config.batch_size, *config.latent_size).to(device, non_blocking=True)
-            conds = torch.randint(0, 1000, size=(len(noises),)).to(device, non_blocking=True)
-        
+        noises  = batch['noise'].to(device, non_blocking=True)
+        conds   = batch['cond']
+        #targets = batch['sample'].to(device, non_blocking=True)        
+        teacher_traj = batch['traj'].to(device, non_blocking=True)
+        teacher_timesteps = batch['timesteps'][0].to(device, non_blocking=True)
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-            latent_pred = solver.sample(noises, model_fn)['samples']
-            if 'classifier' in config.main_loss:
-                outputs = model.decode_vae(latent_pred, raw_output=True)
-                loss = get_classifier_loss(outputs['raw_output'], targets=conds)
-                
+            outputs = solver.sample(noises, model_fn, output_traj=True)
+
+        if config.main_loss == 'traj_loss':
+            target_traj = interp_traj(teacher_traj, teacher_timesteps, outputs['timesteps'])
+            mse_loss = F.mse_loss(target_traj, outputs['traj'])
+            huber_loss = F.huber_loss(teacher_traj[:, -1], outputs['traj'][:, -1], delta=1e-3) * 1000.0
+            loss = mse_loss + huber_loss    
+            
         abort_if_bad("train", loss, global_step)  # ← 즉시 중단
         loss.backward()
         torch.nn.utils.clip_grad_norm_(solver.parameters(), 1.0)
         optimizer.step()
-        
         scheduler.step()   # ← lr 업데이트 포인트
         lr_now = optimizer.param_groups[0]["lr"]
         pbar.set_postfix({'loss': loss.item(), 'lr': lr_now})
         global_step += 1
-
+        
     return global_step
+
 
 # ===============================
 # Train
 # ===============================
-
-def set_seed(seed=42):
-    import random
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
 def main():
-    set_seed()
-
     writer = SummaryWriter(config.log_dir)
     print('tensorboard:', config.log_dir)
 
-    global_step = 0
-    valid_noises = torch.randn(config.n_valid, *config.latent_size).to(device, non_blocking=True)
-    valid_conds = torch.randint(0, 1000, size=(len(valid_noises),)).to(device, non_blocking=True)
+    # global_step을 resume 지점부터 시작
+    global_step = resume_step
     while True:
-        loss = get_valid_loss(valid_noises, valid_conds, device, solver)
+        loss = get_valid_loss(valid_loader, device, solver)
         writer.add_scalar('valid_loss', loss, global_step)
         save_checkpoint(global_step, config.log_dir, solver, optimizer) 
-
         if global_step >= config.total_steps:
             break
+        global_step = do_train_loop(device, train_loader, solver, optimizer, global_step)
         
-        global_step = do_train_loop(device, writer, solver, optimizer, global_step)
-
     print('E-N-D')
     
 if __name__ == "__main__":
