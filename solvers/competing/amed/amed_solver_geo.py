@@ -45,7 +45,7 @@ class AMED_Solver(Solver):
         skip_type="time_uniform",
         flow_shift=1.0,
         algorithm_type="noise_prediction",
-        bottleneck_dim=1024,
+        bottleneck_dim=64,
         checkpoint=False,
         use_afs=True,
         **kwargs
@@ -61,7 +61,8 @@ class AMED_Solver(Solver):
         t_0 = 1.0 / noise_schedule.total_N
         t_T = noise_schedule.T
         self.timesteps = self.get_time_steps(skip_type=skip_type, t_T=t_T, t_0=t_0, N=steps, device='cpu', shift=flow_shift)
-        self.predictor = AMED_predictor(sampler_stu='amed', sampler_tea='euler', bottleneck_input_dim=bottleneck_dim)
+        #self.predictor = AMED_predictor(sampler_stu='amed', sampler_tea='euler', bottleneck_input_dim=bottleneck_dim)
+
         self.r = nn.Parameter(torch.zeros(1,))
         self.scale_dir = nn.Parameter(torch.zeros(1,))
         self.scale_time = nn.Parameter(torch.zeros(1,))
@@ -103,13 +104,14 @@ class AMED_Solver(Solver):
                 noise, bottleneck = self.eval_model(y, rhos[i], kwargs['backbone'])
 
             # Mid
-            r, scale_dir, scale_time = get_amed_prediction(self.predictor, rhos[i], rhos[i+1], bottleneck[len(bottleneck)//2:])
-            # r = torch.sigmoid(self.r)
-            # scale_dir = torch.exp(self.scale_dir)
-            # scale_time = torch.exp(self.scale_time)
+            #r, scale_dir, scale_time = get_amed_prediction(self.predictor, rhos[i], rhos[i+1], bottleneck[len(bottleneck)//2:])
+            #print('we are here!')
+            r = torch.sigmoid(self.r)
+            scale_dir = torch.exp(self.scale_dir)
+            scale_time = torch.exp(self.scale_time)
         
-            rho_mid = (rhos[i+1]**r) * (rhos[i]**(1-r))
             #rho_mid = (rhos[i+1]*r) + (rhos[i]*(1-r))
+            rho_mid = (rhos[i+1]**r) * (rhos[i]**(1-r))
             y_next = y + (rho_mid - rhos[i:i+1])[:, None, None, None] * noise
             noise, _ = self.eval_model(y_next, scale_time * rho_mid, kwargs['backbone'])
 

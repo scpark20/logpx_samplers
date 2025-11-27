@@ -18,7 +18,7 @@ from tqdm import tqdm
 # CLI: 요청대로 세 가지만 제어
 # ===============================
 def get_args():
-    p = argparse.ArgumentParser(description="AMED_GEO training (only 3 overrides)")
+    p = argparse.ArgumentParser(description="AMED_ARI training (only 3 overrides)")
     p.add_argument('--n_steps',    type=int, default=3)
     p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
     return p.parse_args()
@@ -69,14 +69,13 @@ print('done')
 # ===============================
 # Solver / Optimizer / Scheduler
 # ===============================
-from solvers.competing.amed.amed_solver_geo import AMED_Solver
+from solvers.competing.amed.amed_solver_ari import AMED_Solver
 
 noise_schedule = model.get_noise_schedule()
 solver = AMED_Solver(
     noise_schedule,
     steps=config.n_steps,
     skip_type="edm",
-    #skip_type="time_uniform_flow",
     flow_shift=1.0,
     algorithm_type="noise_prediction",
     bottleneck_dim=64, # 8x8
