@@ -2,28 +2,26 @@
 set -e
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-#export CUDA_VISIBLE_DEVICES=$(python -c 'import torch;print(",".join(map(str, range(torch.cuda.device_count()))))')
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=$(python -c 'import torch;print(",".join(map(str, range(torch.cuda.device_count()))))')
 
 # 🔇 torchrun OMP 배너 억제(사전에 지정)
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=train_traj
-MODEL=GMDiT
+TAG=valid_edm
+MODEL=DiT
 DATA=ImageNet
-BATCH_SIZE=100          # GPU당 배치
+BATCH_SIZE=10          # GPU당 배치
 ALGO=data_prediction
-SKIP=time_uniform_flow
-FLOW_SHIFT=1.0
+SKIP=time_uniform
 ORDER=1
-N_SAMPLES=1000
-SEED_OFFSET=1
+N_SAMPLES=100
+SEED_OFFSET=2
 
 SOLVERS=("Euler")
 NFES=(200)
-CFGS=(1.4)
+CFGS=(1.5)
 
 # 사용 GPU 개수 -> nproc
 IFS=',' read -ra _GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
@@ -44,7 +42,6 @@ for solver in "${SOLVERS[@]}"; do
           --solver "$solver" \
           --algorithm_type "$ALGO" \
           --skip_type "$SKIP" \
-          --flow_shift "$FLOW_SHIFT" \
           --NFE "$nfe" \
           --CFG "$cfg" \
           --order "$ORDER" \
@@ -54,8 +51,7 @@ for solver in "${SOLVERS[@]}"; do
           --seed_offset "$SEED_OFFSET" \
           --batch_size "$BATCH_SIZE" \
           --output_noise \
-          --output_sample \
-          --output_traj
+          --output_sample
     done
   done
 done

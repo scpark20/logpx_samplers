@@ -2,28 +2,27 @@
 set -e
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-#export CUDA_VISIBLE_DEVICES=$(python -c 'import torch;print(",".join(map(str, range(torch.cuda.device_count()))))')
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 
 # 🔇 torchrun OMP 배너 억제(사전에 지정)
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=train_traj
-MODEL=GMDiT
+TAG=epd_traj_teacher_edm_5e3_10k
+MODEL=DiT
 DATA=ImageNet
-BATCH_SIZE=100          # GPU당 배치
-ALGO=data_prediction
-SKIP=time_uniform_flow
+BATCH_SIZE=50          # GPU당 배치
+ALGO=noise_prediction
+SKIP=edm
 FLOW_SHIFT=1.0
-ORDER=1
-N_SAMPLES=1000
-SEED_OFFSET=1
+ORDER=2
+N_SAMPLES=50000
+SEED_OFFSET=0
 
-SOLVERS=("Euler")
-NFES=(200)
-CFGS=(1.4)
+SOLVERS=("EPD-Solver_ARI")
+NFES=(5 2)
+CFGS=(1.5)
 
 # 사용 GPU 개수 -> nproc
 IFS=',' read -ra _GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
@@ -35,6 +34,7 @@ for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do
     for cfg in "${CFGS[@]}"; do
       SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}"
+      PT_DIR="logs/dit/epd_traj_teacher_edm_5e3_10k/s${nfe}"
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
@@ -50,12 +50,12 @@ for solver in "${SOLVERS[@]}"; do
           --order "$ORDER" \
           --data "$DATA" \
           --save_root "$SAVE_ROOT" \
+          --pt_dir "$PT_DIR" \
+          --pt_criterion "latest" \
           --n_samples "$N_SAMPLES" \
           --seed_offset "$SEED_OFFSET" \
           --batch_size "$BATCH_SIZE" \
-          --output_noise \
-          --output_sample \
-          --output_traj
+          --output_inception
     done
   done
 done

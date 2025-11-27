@@ -10,12 +10,12 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=train_traj
+TAG=train_traj_edm
 MODEL=GMDiT
 DATA=ImageNet
 BATCH_SIZE=100          # GPU당 배치
 ALGO=data_prediction
-SKIP=time_uniform_flow
+SKIP=edm
 FLOW_SHIFT=1.0
 ORDER=1
 N_SAMPLES=1000

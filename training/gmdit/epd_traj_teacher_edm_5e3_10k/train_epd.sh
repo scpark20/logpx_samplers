@@ -3,10 +3,10 @@ set -euo pipefail
 export DPM_TQDM=${DPM_TQDM:-False}
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-1}
 
-STEPS=(3 2)
+STEPS=(5 2)
 
 for s in "${STEPS[@]}"; do
-  LOG="logs/gmdit/epd_traj_edm_5e3_10k_re1/s${s}"
+  LOG="logs/gmdit/epd_traj_teacher_edm_5e3_10k/s${s}"
 
   # # 이미 로그 디렉토리가 있으면 스킵
   # if [[ -d "$LOG" ]]; then
@@ -17,7 +17,7 @@ for s in "${STEPS[@]}"; do
   echo ">>> n_steps=${s} -> ${LOG}"
   mkdir -p "$LOG"
 
-  python -m training.gmdit.epd_traj_edm_5e3_10k_re1.train_epd \
+  python -m training.gmdit.epd_traj_teacher_edm_5e3_10k.train_epd \
     --n_steps "$s" \
     --log_dir "$LOG"
 done

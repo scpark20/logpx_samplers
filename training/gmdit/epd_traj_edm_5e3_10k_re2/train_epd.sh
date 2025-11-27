@@ -3,7 +3,7 @@ set -euo pipefail
 export DPM_TQDM=${DPM_TQDM:-False}
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 
-STEPS=(4 3 2)
+STEPS=(3 2)
 
 for s in "${STEPS[@]}"; do
   LOG="logs/gmdit/epd_traj_edm_5e3_10k_re2/s${s}"

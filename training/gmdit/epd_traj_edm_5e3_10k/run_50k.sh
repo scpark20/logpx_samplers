@@ -2,25 +2,25 @@
 set -e
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 
 # 🔇 torchrun OMP 배너 억제(사전에 지정)
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=epd_traj_5e3
+TAG=epd_traj_edm_5e3_10k
 MODEL=GMDiT
 DATA=ImageNet
 BATCH_SIZE=50          # GPU당 배치
 ALGO=noise_prediction
-SKIP=time_uniform_flow
+SKIP=edm
 FLOW_SHIFT=1.0
 ORDER=2
 N_SAMPLES=50000
 SEED_OFFSET=0
 
-SOLVERS=("EPD-Solver")
+SOLVERS=("EPD-Solver_ARI")
 NFES=(5 4 3 2)
 CFGS=(1.4)
 
@@ -34,7 +34,7 @@ for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do
     for cfg in "${CFGS[@]}"; do
       SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}/"
-      PT_DIR="logs/gmdit/epd_traj_5e3/s${nfe}"
+      PT_DIR="logs/gmdit/epd_traj_edm_5e3_10k/s${nfe}"
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
