@@ -26,6 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     #parser.add_argument('--cfg_channels',    type=str,   default='full')
     parser.add_argument('--k',               type=float, default=0.5)
     parser.add_argument('--order',           type=int,   default=2)
+    parser.add_argument('--afs', type=lambda s: s.lower() == 'true', default=False, help='Use AFS (pass "True" or "False")')
     parser.add_argument('--data',            type=str,   default='MSCOCO2014_valid')
     parser.add_argument('--save_root',       type=str,   default='/data/scpark/samplings/')
     parser.add_argument('--pt_dir',          type=str,   default=None)
@@ -327,14 +328,14 @@ def main():
             noises = model.get_noise(seeds=seeds)
             solver = Solver(noise_schedule, steps=config.NFE, order=config.order,
                             skip_type=config.skip_type, flow_shift=config.flow_shift, bottleneck_dim=config.bottleneck_dim,
-                            algorithm_type=config.algorithm_type, k=config.k, solver=config.solver).to(device)
+                            algorithm_type=config.algorithm_type, k=config.k, use_afs=config.afs, solver=config.solver).to(device)
             if config.pt_dir is not None:
                 from utils.util import get_pt
                 best_pt = get_pt(config.pt_dir, config.pt_criterion, config.pt_step)
                 state_dict = torch.load(best_pt, map_location='cpu', weights_only=False)['solver_state_dict']
                 solver.load_state_dict(state_dict, strict=False)
 
-            outputs = solver.sample(noises, model_fn, output_traj=config.output_traj, output_preds=config.output_preds)
+            outputs = solver.sample(noises, model_fn, output_traj=config.output_traj, output_preds=config.output_preds, backbone=model)
 
             # ---- 디코딩 필요 여부 (PNG/특징 추출 모두 포함) ----
             needs_decode = (

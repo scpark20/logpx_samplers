@@ -43,8 +43,8 @@ config.total_steps   = 5*1000        # 전체 학습 스텝
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
 config.log_dir       = args.log_dir or config.log_dir
-config.train_pt_dir  = 'samplings/SD/7.5/200/Euler/1000/train_traj_0'
-config.valid_pt_dir  = 'samplings/SD/7.5/200/Euler/100/valid_0'
+config.train_pt_dir  = 'samplings/SD/7.5/200/Euler/1000/train_traj_edm_0'
+config.valid_pt_dir  = 'samplings/SD/7.5/200/Euler/100/valid_edm_0'
 # -----------------------------
 
 # Loss

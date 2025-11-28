@@ -9,20 +9,21 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=amed_traj
+TAG=amed_geo_tu
 MODEL=SD
 DATA=MSCOCO2014_valid_30k
 BATCH_SIZE=5          # GPU당 배치
 ALGO=noise_prediction
-SKIP=edm
+SKIP=time_uniform_flow
 FLOW_SHIFT=1.0
 ORDER=2
 N_SAMPLES=30000
 SEED_OFFSET=0
 
-SOLVERS=("AMED-Solver")
-NFES=(2 3 4 5)
+SOLVERS=("AMED-Solver_GEO")
+NFES=(4 2)
 CFGS=(7.5)
+AFS=False   # ← 여기에서 afs 값 설정
 
 # 사용 GPU 개수 -> nproc
 IFS=',' read -ra _GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
@@ -34,7 +35,7 @@ for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do
     for cfg in "${CFGS[@]}"; do
       SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}"
-      PT_DIR="logs/sd/amed_traj/s${nfe}"
+      PT_DIR="logs/sd/amed_geo_tu/s${nfe}"
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
@@ -48,6 +49,7 @@ for solver in "${SOLVERS[@]}"; do
           --NFE "$nfe" \
           --CFG "$cfg" \
           --order "$ORDER" \
+          --afs "$AFS" \
           --data "$DATA" \
           --save_root "$SAVE_ROOT" \
           --pt_dir "$PT_DIR" \
