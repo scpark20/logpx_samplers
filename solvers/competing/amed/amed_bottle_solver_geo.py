@@ -106,9 +106,9 @@ class AMED_Solver(Solver):
             # Mid
             r, scale_dir, scale_time = get_amed_prediction(self.predictor, rhos[i], rhos[i+1], bottleneck[len(bottleneck)//2:])
             #print('we are here!')
-            r = torch.sigmoid(self.r)
-            scale_dir = torch.exp(self.scale_dir)
-            scale_time = torch.exp(self.scale_time)
+            #r = torch.sigmoid(self.r)
+            #scale_dir = torch.exp(self.scale_dir)
+            #scale_time = torch.exp(self.scale_time)
         
             #rho_mid = (rhos[i+1]*r) + (rhos[i]*(1-r))
             rho_mid = (rhos[i+1]**r) * (rhos[i]**(1-r))
