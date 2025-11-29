@@ -99,7 +99,7 @@ class AMED_Solver(Solver):
         trajs = [x,]
         for i in range(self.steps):
             if self.use_afs and i == 0:
-                noise, bottleneck = torch.zeros_like(x), y / ((1 + rhos[i]**2).sqrt()), None
+                noise, bottleneck = y / ((1 + rhos[i]**2).sqrt()), None
             else:
                 noise, bottleneck = self.eval_model(y, rhos[i], kwargs['backbone'])
 

@@ -10,7 +10,7 @@ export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
 TAG=bns
-MODEL=PixArt-Alpha
+MODEL=SD
 DATA=MSCOCO2014_valid_30k
 BATCH_SIZE=5          # GPU당 배치
 ALGO=dual_prediction
@@ -20,8 +20,8 @@ N_SAMPLES=30000
 SEED_OFFSET=0
 
 SOLVERS=("BNS-Solver_Sep")
-NFES=(9 8 7 6 5 4 3)
-CFGS=(3.5)
+NFES=(8)
+CFGS=(7.5)
 
 # 사용 GPU 개수 -> nproc
 IFS=',' read -ra _GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
@@ -33,7 +33,7 @@ for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do
     for cfg in "${CFGS[@]}"; do
       SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}"
-      PT_DIR="logs/pixart_alpha/bns/s${nfe}"
+      PT_DIR="logs/sd/bns/s${nfe}"
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \

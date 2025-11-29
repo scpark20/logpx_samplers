@@ -14,13 +14,11 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from utils.util import get_latest_pt
-
 # ===============================
 # CLI: 요청대로 세 가지만 제어
 # ===============================
 def get_args():
-    p = argparse.ArgumentParser(description="DS training (only 3 overrides)")
+    p = argparse.ArgumentParser(description="AMED_GEO training (only 3 overrides)")
     p.add_argument('--n_steps',    type=int, default=3)
     p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
     return p.parse_args()
@@ -31,22 +29,22 @@ args = get_args()
 # Config (원문 유지 + 3가지만 덮어쓰기)
 # ===============================
 config = EasyDict()
-config.backbone      = 'SD'
+config.backbone      = 'DiT'
 config.batch_size    = 10
 config.n_valid       = 100
-config.CFG           = 7.5
-config.latent_size   = (4, 64, 64)
+config.CFG           = 1.5
+config.latent_size   = (32, 16, 16)
 
 # LR & Scheduler
-config.base_lr       = 2e-3
-config.end_lr        = 1e-4
+config.base_lr       = 5e-3
+config.end_lr        = 5e-3
 config.total_steps   = 5*1000        # 전체 학습 스텝
 
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
 config.log_dir       = args.log_dir or config.log_dir
-config.train_pt_dir  = '/dataset/sd/train7.5_1k_traj'
-config.valid_pt_dir  = '/dataset/sd/valid7.5_100'
+config.train_pt_dir  = '/dataset/dit/train1.5_1k_traj'
+config.valid_pt_dir  = '/dataset/dit/valid1.5_100'
 # -----------------------------
 
 # Loss
@@ -59,10 +57,10 @@ os.makedirs(config.log_dir, exist_ok=True)
 # ===============================
 # Model (frozen)
 # ===============================
-from backbones.stable_diffusion import StableDiffusion
+from backbones.dit import DiT
 
-if config.backbone == 'SD':
-    model = StableDiffusion(trainable=True)  # 내부 구현에 맞춰 유지
+if config.backbone == 'DiT':
+    model = DiT(trainable=True)  # 내부 구현에 맞춰 유지
     model.set_freeze()
 device = model.device
 print(model)
@@ -71,14 +69,19 @@ print('done')
 # ===============================
 # Solver / Optimizer / Scheduler
 # ===============================
-from solvers.competing.ds.ds_solver_diffusion import DS_Solver
+from solvers.competing.amed.amed_solver_geo import AMED_Solver
 
 noise_schedule = model.get_noise_schedule()
-solver = DS_Solver(noise_schedule,
-        config.n_steps,
-        skip_type='time_uniform',
-        algorithm_type='data_prediction',
-        checkpoint=True).to(device)
+solver = AMED_Solver(
+    noise_schedule,
+    steps=config.n_steps,
+    skip_type="edm",
+    flow_shift=1.0,
+    algorithm_type="noise_prediction",
+    bottleneck_dim=64, # 8x8
+    checkpoint=True,
+    use_afs=True,
+).to(device)
 optimizer = torch.optim.AdamW(solver.parameters(), lr=config.base_lr)
 
 # ---- Scheduler: Pure Cosine ----
@@ -91,31 +94,6 @@ scheduler = CosineAnnealingLR(
 )
 
 print('solver/optimizer')
-
-# ---- Resume (if latest pt exists) ----
-resume_step = 0
-latest = get_latest_pt(config.log_dir)
-if latest is not None:
-    print(f"[RESUME] loading: {latest}")
-    ckpt = torch.load(latest, map_location='cpu', weights_only=False)  # state dict은 장치 무관하게 로드 후 사용
-    solver.load_state_dict(ckpt["solver_state_dict"])
-    optimizer.load_state_dict(ckpt["optim_state_dict"])
-    resume_step = int(ckpt.get("global_step", 0))
-
-    # 스케줄러 상태가 저장되어 있으면 그대로 복구
-    if "scheduler_state_dict" in ckpt:
-        scheduler.load_state_dict(ckpt["scheduler_state_dict"])
-    else:
-        # 없으면 현재 스텝에 맞춰 1회 동기화 (CosineAnnealingLR은 step(epoch) 지원)
-        if resume_step > 0:
-            scheduler.step(resume_step - 1)
-
-    # 로드 결과 출력 (학습률 확인용)
-    lr_now = optimizer.param_groups[0]["lr"]
-    print(f"[RESUME] global_step={resume_step}, lr={lr_now:.3e}")
-else:
-    print("[RESUME] no checkpoint found; starting from scratch")
-
 
 # ===============================
 # Dataset / Dataloader
@@ -164,7 +142,7 @@ def get_valid_loss(valid_loader, device, solver):
         targets = batch['sample'].to(device, non_blocking=True)
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.no_grad():
-            latent_pred = solver.sample(noises, model_fn)['samples']
+            latent_pred = solver.sample(noises, model_fn, backbone=model)['samples']
             loss = torch.log(F.mse_loss(latent_pred, targets))
             losses.append(loss.item())
     return np.mean(losses)
@@ -192,7 +170,7 @@ def do_train_loop(device, train_loader, solver, optimizer, global_step):
         teacher_timesteps = batch['timesteps'][0].to(device, non_blocking=True)
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-            outputs = solver.sample(noises, model_fn, output_traj=True)
+            outputs = solver.sample(noises, model_fn, output_traj=True, backbone=model)
 
         if config.main_loss == 'traj_loss':
             target_traj = interp_traj(teacher_traj, teacher_timesteps, outputs['timesteps'])
@@ -219,9 +197,7 @@ def main():
     writer = SummaryWriter(config.log_dir)
     print('tensorboard:', config.log_dir)
 
-    # global_step을 resume 지점부터 시작
-    global_step = resume_step
-
+    global_step = 0
     while True:
         loss = get_valid_loss(valid_loader, device, solver)
         writer.add_scalar('valid_loss', loss, global_step)

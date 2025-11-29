@@ -28,6 +28,18 @@ class DiT(Backbone):
             submod.to(dtype)
             submod.eval()
 
+        # hook & activation 버퍼
+        self.unet_enc_out: List[torch.Tensor] = []
+
+    # ------------------------------------------------------------------
+    # bottleneck hook 유틸
+    # ------------------------------------------------------------------
+    def register_hook(self):
+        self.unet_enc_out.append(None)
+
+    def clear_hook(self):
+        self.unet_enc_out = []
+
     def set_freeze(self):
         for submod in (self.pipe.vae, self.pipe.transformer):
             submod.eval()

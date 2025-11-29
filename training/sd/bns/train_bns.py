@@ -34,7 +34,7 @@ config = EasyDict()
 config.backbone      = 'SD'
 config.batch_size    = 10
 config.n_valid       = 100
-config.CFG           = 3.5
+config.CFG           = 7.5
 config.latent_size   = (4, 64, 64)
 
 # LR & Scheduler

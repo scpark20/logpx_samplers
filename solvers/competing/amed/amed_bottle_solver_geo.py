@@ -76,7 +76,7 @@ class AMED_Solver(Solver):
         model_output = self.checkpoint_model_fn(x, t) if self.checkpoint else self.model_fn(x, t)
         bottleneck_output = backbone.unet_enc_out[0]
         backbone.clear_hook() 
-        return model_output, bottleneck_output
+        return model_output, bottleneck_output.detach()
 
     def get_x(self, y, rho):
         t = self.noise_schedule.inverse_rho(rho)

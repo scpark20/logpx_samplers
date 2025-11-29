@@ -95,13 +95,13 @@ class AMED_Solver(Solver):
         timesteps = self.timesteps.to(device=device, dtype=dtype)
         rhos = self.noise_schedule.marginal_rho(timesteps)
         
-        y = self.get_y(x, rhos[0])
+        y = self.get_y(x, rhos[0:1])
         trajs = [x,]
         for i in range(self.steps):
             if self.use_afs and i == 0:
-                noise, bottleneck = torch.zeros_like(x), y / ((1 + rhos[i]**2).sqrt()), None
+                noise, bottleneck = y / ((1 + rhos[i:i+1]**2).sqrt()), None
             else:
-                noise, bottleneck = self.eval_model(y, rhos[i], kwargs['backbone'])
+                noise, bottleneck = self.eval_model(y, rhos[i:i+1], kwargs['backbone'])
 
             # Mid
             #r, scale_dir, scale_time = get_amed_prediction(self.predictor, rhos[i], rhos[i+1], bottleneck[len(bottleneck)//2:])
@@ -111,13 +111,13 @@ class AMED_Solver(Solver):
             scale_time = torch.exp(self.scale_time)
         
             #rho_mid = (rhos[i+1]*r) + (rhos[i]*(1-r))
-            rho_mid = (rhos[i+1]**r) * (rhos[i]**(1-r))
+            rho_mid = (rhos[i+1:i+2]**r) * (rhos[i:i+1]**(1-r))
             y_next = y + (rho_mid - rhos[i:i+1])[:, None, None, None] * noise
             noise, _ = self.eval_model(y_next, scale_time * rho_mid, kwargs['backbone'])
 
             # Final
             y = y + scale_dir[:, None, None, None] * (rhos[i+1:i+2] - rhos[i:i+1])[:, None, None, None] * noise
-            x = self.get_x(y, rhos[i+1])
+            x = self.get_x(y, rhos[i+1:i+2])
             trajs.append(x)
         
         outputs = {'samples': x}
