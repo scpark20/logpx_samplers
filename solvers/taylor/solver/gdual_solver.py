@@ -6,6 +6,7 @@ from tqdm import tqdm
 from ...solver import Solver
 from ..transform.logaffine_transform import LogAffineTransform
 from ..extractor.table_extractor import Extractor
+from ..extractor.tau_table_extractor import Extractor as TauExtractor
 from contextlib import nullcontext
 import numpy as np
 
@@ -46,6 +47,8 @@ class GDual_Solver(Solver):
         self.use_corrector = use_corrector
         self.param_extractor = param_extractor
         self.transform = transform
+        if self.param_extractor == 'tau_table_extractor':
+            self.param_extractor = TauExtractor(steps=steps, tau_init=1.0)
         if self.param_extractor is None:
             self.param_extractor = Extractor(steps=steps)
         if self.transform is None:
@@ -63,6 +66,25 @@ class GDual_Solver(Solver):
         self.log_deltas = nn.Parameter(torch.log(timesteps[:-1] - timesteps[1:]))
         if self.scale_learning:
             self.scale = nn.Parameter(torch.ones(1))
+
+    # -----------------------------
+    # tau_x, tau_e projection [0,1]
+    # -----------------------------
+    def clamp_tau_params(self):
+        """
+        param_extractor.table: (steps, 2, out_dim)
+        out_dim=5: [gamma, tau_x, tau_e, kappa_x, kappa_e]
+        -> 마지막 차원 1:3이 tau_x, tau_e
+        """
+        pe = getattr(self, "param_extractor", None)
+        if pe is None:
+            return
+        table = getattr(pe, "table", None)
+        if table is None:
+            return
+
+        with torch.no_grad():
+            table.data[..., 1:3].clamp_(0.0, 1.0)
 
     def get_next_sample(
         self,

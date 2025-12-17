@@ -3,7 +3,8 @@ import numpy as np
 from diffusers import WanImageToVideoPipeline
 from diffusers.utils import export_to_video, load_image
 
-model_id = "Wan-AI/Wan2.2-I2V-A14B-Diffusers"
+#model_id = "Wan-AI/Wan2.2-I2V-A14B-Diffusers"
+model_id = "Wan-AI/Wan2.2-TI2V-5B-Diffusers"
 dtype = torch.bfloat16
 device = "cuda"
 

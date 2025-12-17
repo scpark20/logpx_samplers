@@ -99,6 +99,12 @@ class Solver(nn.Module):
             noise = self.model(x, t)
             alpha_t = self.noise_schedule.marginal_alpha(t)
             sigma_t = self.noise_schedule.marginal_std(t)
+
+            if len(sigma_t.shape) == 0:
+                sigma_t = sigma_t.unsqueeze(0)
+            if len(alpha_t.shape) == 0:
+                alpha_t = alpha_t.unsqueeze(0)
+                
             x0 = (x - sigma_t[:, None, None, None] * noise) / alpha_t[:, None, None, None]
             if self.correcting_x0_fn is not None:
                 x0 = self.correcting_x0_fn(x0, t)

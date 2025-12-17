@@ -21,6 +21,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--algorithm_type',  type=str,   default='data_prediction')
     parser.add_argument('--skip_type',       type=str,   default='time_uniform')
     parser.add_argument('--flow_shift',      type=float, default=3.0)
+    parser.add_argument('--gamma_init',      type=float, default=0.0)
+    parser.add_argument('--tau_init',        type=float, default=1.0)
+    parser.add_argument('--tau_x_init',        type=float, default=1.0)
+    parser.add_argument('--tau_e_init',        type=float, default=1.0)
     parser.add_argument('--NFE',             type=int,   default=10)
     parser.add_argument('--CFG',             type=float, default=4.5)
     #parser.add_argument('--cfg_channels',    type=str,   default='full')
@@ -151,6 +155,76 @@ def get_solver(config: EasyDict):
         from solvers.taylor.transform.loglinear_transform import LogLinearTransform
         transform = LogLinearTransform(gamma_push=True, gamma_max=2, kappa_max=2, eps=1e-2)
         return partial(GDual_Solver, transform=transform)
+
+    if config.solver == 'Dual-Solver_LL2':
+        from functools import partial
+        from solvers.taylor.solver.gdual_solver import GDual_Solver
+        from solvers.taylor.transform.loglinear_transform2 import LogLinearTransform
+        transform = LogLinearTransform(gamma_push=True, gamma_max=5, kappa_max=5, eps=1e-2)
+        return partial(GDual_Solver, transform=transform)
+
+    if config.solver == 'Dual-Solver_LL3':
+        from functools import partial
+        from solvers.taylor.solver.gdual_solver import GDual_Solver
+        from solvers.taylor.transform.loglinear_transform3 import LogLinearTransform
+        transform = LogLinearTransform(gamma_push=True, gamma_init=config.gamma_init, tau_init=config.tau_init, eps=1e-2)
+        return partial(GDual_Solver, transform=transform)
+
+    if config.solver == 'Dual-Solver_GEO':
+        from functools import partial
+        from solvers.taylor.solver.gdual_solver import GDual_Solver
+        from solvers.taylor.transform.loglinear_geo_transform import LogLinearTransform
+        transform = LogLinearTransform(gamma_push=True, gamma_init=config.gamma_init, tau_init=config.tau_init, eps=1e-2)
+        return partial(GDual_Solver, transform=transform)
+
+    if config.solver == 'Dual-Solver_LL4':
+        from functools import partial
+        from solvers.taylor.solver.gdual_solver import GDual_Solver
+        from solvers.taylor.transform.loglinear_transform4 import LogLinearTransform
+        transform = LogLinearTransform(gamma_push=True, gamma_init=config.gamma_init, tau_init=config.tau_init, eps=1e-2)
+        return partial(GDual_Solver, transform=transform)
+
+    if config.solver == 'Dual-Solver_LL5':
+        from functools import partial
+        from solvers.taylor.solver.gdual_solver import GDual_Solver
+        from solvers.taylor.transform.loglinear_transform5 import LogLinearTransform
+        transform = LogLinearTransform(gamma_push=True, gamma_init=config.gamma_init, tau_init=config.tau_init, eps=1e-2)
+        return partial(GDual_Solver, transform=transform)
+
+    if config.solver == 'Dual-Solver_LL6':
+        from functools import partial
+        from solvers.taylor.solver.gdual_solver import GDual_Solver
+        from solvers.taylor.transform.loglinear_transform6 import LogLinearTransform
+        transform = LogLinearTransform(gamma_push=True, gamma_init=config.gamma_init, tau_x_init=config.tau_x_init, tau_e_init=config.tau_e_init, eps=1e-2)
+        return partial(GDual_Solver, transform=transform)
+
+    if config.solver == 'Dual-Solver_LL7':
+        from functools import partial
+        from solvers.taylor.solver.gdual_solver import GDual_Solver
+        from solvers.taylor.transform.loglinear_transform7 import LogLinearTransform
+        transform = LogLinearTransform(gamma_push=True, gamma_init=config.gamma_init, tau_init=config.tau_init, eps=1e-2)
+        return partial(GDual_Solver, transform=transform)
+
+    if config.solver == 'Dual-Solver_LL9':
+        from functools import partial
+        from solvers.taylor.solver.gdual_solver import GDual_Solver
+        from solvers.taylor.transform.loglinear_transform9 import LogLinearTransform
+        transform = LogLinearTransform(gamma_push=True, gamma_init=config.gamma_init, tau_init=config.tau_init, eps=1e-2)
+        return partial(GDual_Solver, transform=transform)
+
+    if config.solver == 'Dual-Solver_LL10':
+        from functools import partial
+        from solvers.taylor.solver.gdual_solver import GDual_Solver
+        from solvers.taylor.transform.loglinear_transform10 import LogLinearTransform
+        transform = LogLinearTransform(gamma_push=True, gamma_init=config.gamma_init, tau_init=config.tau_init, eps=1e-2)
+        return partial(GDual_Solver, transform=transform)
+
+    if config.solver == 'Dual-Solver_CLIP':
+        from functools import partial
+        from solvers.taylor.solver.gdual_solver import GDual_Solver
+        from solvers.taylor.transform.loglinear_transform2 import LogLinearTransform
+        transform = LogLinearTransform(gamma_push=True, gamma_max=5, kappa_max=5, eps=1e-2)
+        return partial(GDual_Solver, transform=transform, param_extractor='tau_table_extractor')
 
     if config.solver == 'Dual-Solver_Quad' or config.solver == 'Dual-Solver_Legendre':
         from solvers.taylor.solver.gdual_solver_steps_list import GDual_Solver
@@ -334,6 +408,7 @@ def main():
                 best_pt = get_pt(config.pt_dir, config.pt_criterion, config.pt_step)
                 state_dict = torch.load(best_pt, map_location='cpu', weights_only=False)['solver_state_dict']
                 solver.load_state_dict(state_dict, strict=False)
+                #print('Loaded checkpoint :', best_pt)
 
             outputs = solver.sample(noises, model_fn, output_traj=config.output_traj, output_preds=config.output_preds, backbone=model)
 

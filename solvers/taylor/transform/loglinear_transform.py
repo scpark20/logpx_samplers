@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from .transform import Transform
 
+# tau_x, tau_e sigmoid 처리
 class LogLinearTransform(Transform):
     def __init__(self,
         gamma_push=False,

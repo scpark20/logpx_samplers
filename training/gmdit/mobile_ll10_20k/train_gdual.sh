@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export DPM_TQDM=${DPM_TQDM:-False}
+export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-1}
+
+#STEPS=(9 7 5 3)
+STEPS=(8 6 4)
+
+for s in "${STEPS[@]}"; do
+
+  LOG="logs/gmdit/mobile_ll10_20k/s${s}"
+
+  # # 이미 로그 디렉토리가 있으면 스킵
+  # if [[ -d "$LOG" ]]; then
+  #   echo ">>> exists: $LOG — skipping"
+  #   continue
+  # fi
+
+  echo ">>> n_steps=${s} -> ${LOG}"
+  mkdir -p "$LOG"
+
+  python -m training.gmdit.mobile_ll10_20k.train_gdual \
+    --n_steps "$s" \
+    --log_dir "$LOG"
+
+done
