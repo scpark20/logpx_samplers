@@ -2,19 +2,19 @@
 set -e
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 
 # 🔇 torchrun OMP 배너 억제(사전에 지정)
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 
-TAG=mobile_ll10_20k
-MODEL=GMDiT
+TAG=mobile_ll10_15_20k_try2
+MODEL=DiT
 DATA=ImageNet
-BATCH_SIZE=100
+BATCH_SIZE=100          # GPU당 배치
 ALGO=dual_prediction
-SKIP=time_uniform_flow
+SKIP=time_uniform
 FLOW_SHIFT=1.0
 ORDER=2
 N_SAMPLES=50000
@@ -22,8 +22,9 @@ SEED_OFFSET=0
 
 SOLVERS=("Dual-Solver_LL10")
 #NFES=(9 7 5 3)
-NFES=(8 6 4)
-CFGS=(1.4)
+#NFES=(8 6 4)
+NFES=(8)
+CFGS=(1.5)
 
 # 사용 GPU 개수 -> nproc
 IFS=',' read -ra _GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
@@ -35,7 +36,7 @@ for solver in "${SOLVERS[@]}"; do
   for nfe in "${NFES[@]}"; do
     for cfg in "${CFGS[@]}"; do
       SAVE_ROOT="${BASE_OUT}/${MODEL}/${cfg}/${nfe}/${solver}/${N_SAMPLES}"
-      PT_DIR="logs/gmdit/mobile_ll10_20k/s${nfe}"
+      PT_DIR="logs/dit/mobile_ll10_15_20k/s${nfe}_try2"
       echo "▶ torchrun (nproc=${NPROC}, GPUs=${CUDA_VISIBLE_DEVICES}) | ${MODEL} | solver=${solver} | NFE=${nfe} | CFG=${cfg}"
       CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
       DIST_BACKEND=gloo torchrun --standalone --nproc_per_node="${NPROC}" \
