@@ -22,6 +22,7 @@ SEED_OFFSET=0
 
 SOLVERS=("Dual-Solver_LL10")
 #NFES=(9 7 5 3)
+#NFES=(3 4 5 6 7 9)
 NFES=(8)
 CFGS=(1.4)
 
