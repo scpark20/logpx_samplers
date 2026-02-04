@@ -19,6 +19,9 @@ from tqdm import tqdm
 def get_args():
     p = argparse.ArgumentParser(description="GDual training (only 3 overrides)")
     p.add_argument('--n_steps',    type=int, default=3)
+    p.add_argument('--batch_size',    type=int, default=10)
+    p.add_argument('--gamma_init',    type=float, default=0.0)
+    p.add_argument('--tau_init',    type=float, default=0.99)
     p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
     return p.parse_args()
 
@@ -29,7 +32,7 @@ args = get_args()
 # ===============================
 config = EasyDict()
 config.backbone      = 'SANA'
-config.batch_size    = 2
+config.batch_size    = 10
 config.n_valid       = 100
 config.CFG           = 4.5
 config.latent_size   = (32, 16, 16)
@@ -41,6 +44,9 @@ config.total_steps   = 20*1000        # 전체 학습 스텝
 
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
+config.batch_size    = args.batch_size
+config.gamma_init    = args.gamma_init
+config.tau_init      = args.tau_init
 config.log_dir       = args.log_dir or config.log_dir
 # -----------------------------
 
@@ -79,12 +85,12 @@ print('done')
 # Solver / Optimizer / Scheduler
 # ===============================
 from solvers.taylor.solver.gdual_solver import GDual_Solver
-from solvers.taylor.transform.logaffine_transform import LogAffineTransform
+from solvers.taylor.transform.loglinear_transform10 import LogLinearTransform
 from solvers.taylor.extractor.table_extractor import Extractor
 
 noise_schedule = model.get_noise_schedule()
 extractor = Extractor(steps=config.n_steps)
-transform = LogAffineTransform(gamma_push=True, gamma_max=2, tau_offset=1, kappa_max=2, eps=1e-2)
+transform = LogLinearTransform(gamma_push=True, gamma_init=config.gamma_init, tau_init=config.tau_init, eps=1e-2)
 solver = GDual_Solver(
     noise_schedule,
     steps=config.n_steps,

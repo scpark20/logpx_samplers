@@ -28,9 +28,9 @@ class SANA(Backbone):
             submod.eval()
 
     def set_freeze(self):
-        for submod in (self.pipe.vae, self.pipe.transformer):
+        for submod in (self.pipe.vae, self.pipe.text_encoder, self.pipe.transformer):
             submod.eval()
-            for p in submod.parameters():  # 확실히 freeze
+            for p in submod.parameters():
                 p.requires_grad_(False)
 
     def prepare_noise(
@@ -55,13 +55,21 @@ class SANA(Backbone):
         if neg_texts is None:
             neg_texts = [""] * len(pos_texts)
 
-        embeds, attn_mask, neg_embeds, neg_mask = self.pipe.encode_prompt(
-            prompt=pos_texts,
-            negative_prompt=neg_texts,
-            num_images_per_prompt=1,
-            do_classifier_free_guidance=True,
-            device=self.device
-        )
+        with torch.no_grad():  # or torch.inference_mode()
+            embeds, attn_mask, neg_embeds, neg_mask = self.pipe.encode_prompt(
+                prompt=pos_texts,
+                negative_prompt=neg_texts,
+                num_images_per_prompt=1,
+                do_classifier_free_guidance=True,
+                device=self.device
+            )
+
+        # 안전하게 그래프 끊기
+        embeds     = embeds.detach()
+        neg_embeds = neg_embeds.detach()
+        attn_mask  = attn_mask.detach()
+        neg_mask   = neg_mask.detach()
+
         return embeds, attn_mask, neg_embeds, neg_mask
 
     def decode_vae(

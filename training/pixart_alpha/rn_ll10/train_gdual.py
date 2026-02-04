@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from operator import truediv
 import os 
 import math
 import argparse
@@ -19,6 +20,9 @@ from tqdm import tqdm
 def get_args():
     p = argparse.ArgumentParser(description="GDual training (only 3 overrides)")
     p.add_argument('--n_steps',    type=int, default=3)
+    p.add_argument('--batch_size',    type=int, default=10)
+    p.add_argument('--gamma_init',    type=float, default=0.0)
+    p.add_argument('--tau_init',    type=float, default=0.99)
     p.add_argument('--log_dir',    type=str, default=None, help="Override TensorBoard/log save dir")
     return p.parse_args()
 
@@ -28,11 +32,11 @@ args = get_args()
 # Config (원문 유지 + 3가지만 덮어쓰기)
 # ===============================
 config = EasyDict()
-config.backbone      = 'SANA'
-config.batch_size    = 2
+config.backbone      = 'PixArt-Alpha'
+config.batch_size    = 10
 config.n_valid       = 100
-config.CFG           = 4.5
-config.latent_size   = (32, 16, 16)
+config.CFG           = 3.5
+config.latent_size   = (4, 64, 64)
 
 # LR & Scheduler
 config.base_lr       = 2e-3
@@ -41,6 +45,9 @@ config.total_steps   = 20*1000        # 전체 학습 스텝
 
 # ---- 여기만 CLI로 덮어씀 ----
 config.n_steps       = args.n_steps
+config.batch_size    = args.batch_size
+config.gamma_init    = args.gamma_init
+config.tau_init      = args.tau_init
 config.log_dir       = args.log_dir or config.log_dir
 # -----------------------------
 
@@ -53,15 +60,15 @@ os.makedirs(config.log_dir, exist_ok=True)
 # ===============================
 # Model (frozen)
 # ===============================
-from backbones.sana import SANA
+from backbones.pixart_alpha import PixArtAlpha
 from utils.open_clip import OpenCLIPEmbedder
 
 CLIP_MODELS = [
     ('RN101', 'openai'),  # MSCOCO: 40.25% (Rank 89)
 ]
 
-if config.backbone == 'SANA':
-    model = SANA(trainable=True)  # 내부 구현에 맞춰 유지
+if config.backbone == 'PixArt-Alpha':
+    model = PixArtAlpha(trainable=True)  # 내부 구현에 맞춰 유지
     model.set_freeze()
 device = model.device
 print(model)
@@ -79,19 +86,18 @@ print('done')
 # Solver / Optimizer / Scheduler
 # ===============================
 from solvers.taylor.solver.gdual_solver import GDual_Solver
-from solvers.taylor.transform.logaffine_transform import LogAffineTransform
+from solvers.taylor.transform.loglinear_transform10 import LogLinearTransform
 from solvers.taylor.extractor.table_extractor import Extractor
 
 noise_schedule = model.get_noise_schedule()
 extractor = Extractor(steps=config.n_steps)
-transform = LogAffineTransform(gamma_push=True, gamma_max=2, tau_offset=1, kappa_max=2, eps=1e-2)
+transform = LogLinearTransform(gamma_push=True, gamma_init=config.gamma_init, tau_init=config.tau_init, eps=1e-2)
 solver = GDual_Solver(
     noise_schedule,
     steps=config.n_steps,
     transform=transform,
     param_extractor=extractor,
-    skip_type="time_uniform_flow",
-    flow_shift=3.0,
+    skip_type="time_uniform",    
     pred_order=1,
     corr_order=2,
     order1_kappa=True,
@@ -240,7 +246,7 @@ def main():
 
     # global_step을 resume 지점부터 시작
     global_step = resume_step
-    
+
     while True:
         data = np.load('prompts/mscoco2014_valid.npz')['arr_0'].tolist()
         prompts = [d[1] for d in data][:config.n_valid]
