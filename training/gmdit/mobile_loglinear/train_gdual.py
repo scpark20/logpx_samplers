@@ -14,8 +14,8 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-# GMFLOW = os.path.join("submodules", "GMFlow")
-# sys.path.insert(0, GMFLOW)
+GMFLOW = os.path.join("submodules", "GMFlow")
+sys.path.insert(0, GMFLOW)
 
 # (arch, weight_fullname) — 문자열 그대로 Classifier에 넘겨 사용
 CLASSIFIER_MODELS = [
@@ -38,10 +38,10 @@ args = get_args()
 # Config (원문 유지 + 3가지만 덮어쓰기)
 # ===============================
 config = EasyDict()
-config.backbone      = 'DiT'
+config.backbone      = 'GMDiT'
 config.batch_size    = 10
 config.n_valid       = 100
-config.CFG           = 1.5
+config.CFG           = 1.4
 config.latent_size   = (4, 32, 32)
 
 # LR & Scheduler
@@ -64,11 +64,11 @@ os.makedirs(config.log_dir, exist_ok=True)
 # ===============================
 # Model (frozen)
 # ===============================
-from backbones.dit import DiT
+from backbones.gmdit import GMDiT
 from utils.general_classifier import Classifier
 
-if config.backbone == 'DiT':
-    model = DiT(trainable=True)  # 내부 구현에 맞춰 유지
+if config.backbone == 'GMDiT':
+    model = GMDiT(trainable=True)  # 내부 구현에 맞춰 유지
     model.set_freeze()
 device = model.device
 print(model)
@@ -100,7 +100,7 @@ solver = GDual_Solver(
     steps=config.n_steps,
     transform=transform,
     param_extractor=extractor,
-    skip_type="time_uniform",
+    skip_type="time_uniform_flow",
     flow_shift=1.0,
     pred_order=1,
     corr_order=2,
@@ -176,23 +176,11 @@ def get_valid_loss(valid_noises, valid_conds, device, solver):
 
     return np.mean(losses)
 
-def _trimmed_mean_excl_minmax(values):
-    """Return mean excluding a single min and max. If len<=2, fallback to simple mean."""
-    n = len(values)
-    if n == 0:
-        return float("nan")
-    if n <= 2:
-        return float(sum(values)) / n
-    s = sorted(values)
-    core = s[1:-1]
-    return float(sum(core)) / len(core)    
 
-import time
 def do_train_loop(device, writer, solver, optimizer, global_step):
     solver.train()
     pbar = tqdm(range(1000))
     
-    elapsed_times = {'sampling':[], 'decoding':[], 'classification':[], 'backward':[]}
     for _, batch in enumerate(pbar):
         if global_step >= config.total_steps:
             break
@@ -204,51 +192,19 @@ def do_train_loop(device, writer, solver, optimizer, global_step):
         
         model_fn = model.get_model_fn(noise_schedule, pos_conds=conds, guidance_scale=config.CFG)
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-            torch.cuda.synchronize()
-            t0 = time.time()
             latent_pred = solver.sample(noises, model_fn)['samples']
-            torch.cuda.synchronize()
-            elapsed_times['sampling'].append(time.time() - t0)
-            torch.cuda.synchronize()
-            t0 = time.time()
-
             if 'classifier' in config.main_loss:
                 outputs = model.decode_vae(latent_pred, raw_output=True)
-                torch.cuda.synchronize()
-                elapsed_times['decoding'].append(time.time() - t0)
-                torch.cuda.synchronize()
-                t0 = time.time()
                 loss = get_classifier_loss(outputs['raw_output'], targets=conds)
-                torch.cuda.synchronize()
-                elapsed_times['classification'].append(time.time() - t0)
-                torch.cuda.synchronize()
-                t0 = time.time()
                 
         abort_if_bad("train", loss, global_step)  # ← 즉시 중단
         loss.backward()
         torch.nn.utils.clip_grad_norm_(solver.parameters(), 1.0)
         optimizer.step()
-        torch.cuda.synchronize()
-        elapsed_times['backward'].append(time.time() - t0)
-
         scheduler.step()   # ← lr 업데이트 포인트
         lr_now = optimizer.param_groups[0]["lr"]
         pbar.set_postfix({'loss': loss.item(), 'lr': lr_now})
         global_step += 1
-
-    # ---- 여기서 트리밍 평균 출력 ----
-    samp_avg = _trimmed_mean_excl_minmax(elapsed_times['sampling'])
-    dec_avg  = _trimmed_mean_excl_minmax(elapsed_times['decoding'])
-    class_avg = _trimmed_mean_excl_minmax(elapsed_times['classification'])
-    bwd_avg  = _trimmed_mean_excl_minmax(elapsed_times['backward'])
-    n_iter   = len(elapsed_times['sampling'])
-
-    # 콘솔 출력 (ms)
-    print(f"[TIME] sampling avg (excl min/max): {samp_avg*1000:.2f} ms | "
-          f"decoding avg (excl min/max): {dec_avg*1000:.2f} ms | "
-          f"classification avg (excl min/max): {class_avg*1000:.2f} ms | "
-          f"backward avg (excl min/max): {bwd_avg*1000:.2f} ms | "
-          f"iters: {n_iter}")
         
     return global_step
 

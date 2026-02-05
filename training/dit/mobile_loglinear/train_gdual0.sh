@@ -3,7 +3,7 @@ set -euo pipefail
 export DPM_TQDM=${DPM_TQDM:-False}
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 
-STEPS=(9 7 5 3)
+STEPS=(9 8 4)
 
 for s in "${STEPS[@]}"; do
   LOG="logs/dit/mobile_loglinear/s${s}"
