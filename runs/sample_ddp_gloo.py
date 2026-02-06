@@ -156,6 +156,13 @@ def get_solver(config: EasyDict):
         transform = LogLinearTransform(gamma_push=True, gamma_max=2, kappa_max=2, eps=1e-2)
         return partial(GDual_Solver, transform=transform)
 
+    if config.solver == 'Dual-Solver_LL11':
+        from functools import partial
+        from solvers.taylor.solver.gdual_solver import GDual_Solver
+        from solvers.taylor.transform.loglinear_transform11 import LogLinearTransform
+        transform = LogLinearTransform(gamma_push=True, gamma_max=2, kappa_max=2, eps=1e-2)
+        return partial(GDual_Solver, transform=transform)
+
     if config.solver == 'Dual-Solver_LL2':
         from functools import partial
         from solvers.taylor.solver.gdual_solver import GDual_Solver
