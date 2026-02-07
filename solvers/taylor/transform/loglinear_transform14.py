@@ -2,18 +2,22 @@ import torch
 import torch.nn.functional as F
 from .transform import Transform
 
-# tau_x, tau_e sigmoid 처리, tau_raw_init=-2.0
+def ste_clamp_01(x, eps=1e-2):
+    y = torch.clamp(x, 0.0 + eps, 1.0 - eps)
+    return x + (y - x).detach()
+
+# tau : ste, gamma, kappa (-2, 2)
 class LogLinearTransform(Transform):
     def __init__(self,
         gamma_push=False,
         gamma_max=None,
         kappa_max=None,
-        tau_raw_init=-2.0,
+        tau_init=1e-2,
         eps=1e-2):
         self.gamma_push = gamma_push
         self.gamma_max = gamma_max
         self.kappa_max = kappa_max
-        self.tau_raw_init = tau_raw_init
+        self.tau_init = tau_init
         self.eps = eps
         
     def unpack(self, params):
@@ -27,8 +31,8 @@ class LogLinearTransform(Transform):
         if self.gamma_max is not None:
             gamma = torch.tanh(gamma) * self.gamma_max
 
-        tau_x = torch.sigmoid(tau_x + self.tau_raw_init)
-        tau_e = torch.sigmoid(tau_e + self.tau_raw_init)
+        tau_x = ste_clamp_01(tau_x)
+        tau_e = ste_clamp_01(tau_e)
 
         if self.gamma_push:
             gamma = self.push_away(gamma,  1, self.eps)
