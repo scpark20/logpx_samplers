@@ -2,13 +2,13 @@ import torch
 import torch.nn.functional as F
 from .transform import Transform
 
-# tau_x, tau_e sigmoid 처리, tau_raw_init=-1.0
+# tau_x, tau_e sigmoid 처리, tau_raw_init=3.0
 class LogLinearTransform(Transform):
     def __init__(self,
         gamma_push=False,
         gamma_max=None,
         kappa_max=None,
-        tau_raw_init=2.0,
+        tau_raw_init=3.0,
         eps=1e-2):
         self.gamma_push = gamma_push
         self.gamma_max = gamma_max
