@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export DPM_TQDM=${DPM_TQDM:-False}
-export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-1}
 
-#STEPS=(9 8 7)
-STEPS=(6 5 4 3)
+STEPS=(9 8 7 6 5 4 3)
 
 for s in "${STEPS[@]}"; do
-  LOG="logs/dit/mobile_ll20/s${s}"
+  LOG="logs/dit/mobile_ll20_2/s${s}"
 
   # # 이미 로그 디렉토리가 있으면 스킵
   # if [[ -d "$LOG" ]]; then

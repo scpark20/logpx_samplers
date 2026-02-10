@@ -198,6 +198,34 @@ def get_solver(config: EasyDict):
         transform = LogLinearTransform(gamma_push=True, gamma_max=2, kappa_max=2, eps=1e-2)
         return partial(GDual_Solver, transform=transform)    
 
+    if config.solver == 'Dual-Solver_LL17':
+        from functools import partial
+        from solvers.taylor.solver.gdual_solver import GDual_Solver
+        from solvers.taylor.transform.loglinear_transform17 import LogLinearTransform
+        transform = LogLinearTransform(gamma_push=True, eps=1e-2)
+        return partial(GDual_Solver, transform=transform)    
+
+    if config.solver == 'Dual-Solver_LL18':
+        from functools import partial
+        from solvers.taylor.solver.gdual_solver import GDual_Solver
+        from solvers.taylor.transform.loglinear_transform18 import LogLinearTransform
+        transform = LogLinearTransform(gamma_push=True, eps=1e-2)
+        return partial(GDual_Solver, transform=transform)    
+        
+    if config.solver == 'Dual-Solver_LL19':
+        from functools import partial
+        from solvers.taylor.solver.gdual_solver import GDual_Solver
+        from solvers.taylor.transform.loglinear_transform19 import LogLinearTransform
+        transform = LogLinearTransform(gamma_push=True, eps=1e-2)
+        return partial(GDual_Solver, transform=transform)    
+
+    if config.solver == 'Dual-Solver_LL20':
+        from functools import partial
+        from solvers.taylor.solver.gdual_solver import GDual_Solver
+        from solvers.taylor.transform.loglinear_transform20 import LogLinearTransform
+        transform = LogLinearTransform(gamma_push=True, eps=1e-2)
+        return partial(GDual_Solver, transform=transform)                
+
     if config.solver == 'Dual-Solver_LL2':
         from functools import partial
         from solvers.taylor.solver.gdual_solver import GDual_Solver

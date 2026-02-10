@@ -2,7 +2,7 @@
 set -e
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=0,1
 
 # 🔇 torchrun OMP 배너 억제(사전에 지정)
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
@@ -12,7 +12,7 @@ export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4}
 TAG=mobile_ll17
 MODEL=DiT
 DATA=ImageNet
-BATCH_SIZE=5          # GPU당 배치
+BATCH_SIZE=100          # GPU당 배치
 ALGO=dual_prediction
 SKIP=time_uniform
 FLOW_SHIFT=1.0
