@@ -2,7 +2,7 @@
 set -e
 
 # 여기서 GPU 번호 수동 지정 (여러 개면 쉼표로)
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 
 # 🔇 torchrun OMP 배너 억제(사전에 지정)
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
@@ -17,13 +17,13 @@ ALGO=dual_prediction
 SKIP=time_uniform_flow
 FLOW_SHIFT=1.0
 ORDER=2
-N_SAMPLES=50000
+N_SAMPLES=10000
 SEED_OFFSET=0
 
 SOLVERS=("Dual-Solver_LogLinear")
 NFES=(9)
 CFGS=(1.4)
-N_CLASSIFIERS=(19 17 15 13 11 9 7 5 3 1)
+N_CLASSIFIERS=(0 2 4 6 8 10 12 14 16 18)
 
 # 사용 GPU 개수 -> nproc
 IFS=',' read -ra _GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"

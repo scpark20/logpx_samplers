@@ -23,7 +23,7 @@ SEED_OFFSET=0
 SOLVERS=("Dual-Solver_LogLinear")
 NFES=(9)
 CFGS=(1.4)
-N_CLASSIFIERS=(0 2 4 6 8 10 12 14 16 18)
+N_CLASSIFIERS=(18 16 14 12 10 8 6 4 2 0)
 
 # 사용 GPU 개수 -> nproc
 IFS=',' read -ra _GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
